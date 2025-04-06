@@ -33,6 +33,7 @@ namespace NACopsV1
         static PoliceOfficer[] officers;
         List<object> coros = new();
         public static HashSet<PoliceOfficer> currentPIs = new HashSet<PoliceOfficer>();
+        public static HashSet<PoliceOfficer> currentDrugApprehender = new HashSet<PoliceOfficer>();
 
         public override void OnApplicationStart()
         {
@@ -68,14 +69,18 @@ namespace NACopsV1
                     }
                 }
 
-                if (noticeOfficer.awareness.VisionCone.IsPointWithinSight(player.transform.position, ignoreLoS: true))
+                currentDrugApprehender.Add(noticeOfficer);
+                MelonCoroutines.Start(ApprehenderOfficerClear(noticeOfficer));
+
+                bool apprehending = false;
+                if (noticeOfficer.awareness.VisionCone.IsPointWithinSight(player.transform.position))
                 {
                     MelonLogger.Msg("Point within immediate sight apprehend drug user");
                     noticeOfficer.BeginBodySearch_Networked(player.NetworkObject);
-                    yield return null;
+                    apprehending = true;
                 }
 
-                if (noticeOfficer != null)
+                if (noticeOfficer != null && !apprehending)
                 {
                     for (int i = 0; i <= 15; i++)
                     {
@@ -108,6 +113,13 @@ namespace NACopsV1
             {
                 yield return null;
             }
+        }
+
+        private static IEnumerator ApprehenderOfficerClear(PoliceOfficer offc)
+        {
+            yield return new WaitForSeconds(20f);
+            if (currentDrugApprehender.Contains(offc))
+                currentDrugApprehender.Remove(offc);
         }
 
         public override void OnSceneWasInitialized(int buildIndex, string sceneName)
@@ -147,7 +159,7 @@ namespace NACopsV1
                     foreach (PoliceOfficer officer in officers)
                     {
                         float distance = Vector3.Distance(officer.transform.position, player.transform.position);
-                        if (distance < minDistance && !currentPIs.Contains(officer))
+                        if (distance < minDistance && !currentPIs.Contains(officer) && !currentDrugApprehender.Contains(officer))
                         {
                             nearestOfficer = officer;
                             try
@@ -180,7 +192,7 @@ namespace NACopsV1
                     foreach (PoliceOfficer officer in officers)
                     {
                         float distance = Vector3.Distance(officer.transform.position, player.transform.position);
-                        if (distance < minDistance && !currentPIs.Contains(officer))
+                        if (distance < minDistance && !currentPIs.Contains(officer) && !currentDrugApprehender.Contains(officer))
                         {
                             nearestOfficer = officer;
                             nearestOfficer.Movement.WalkSpeed = 7f;
@@ -216,7 +228,7 @@ namespace NACopsV1
                     continue;
                 }
 
-                if (currentPIs.Contains(randomOfficer))
+                if (currentPIs.Contains(randomOfficer) || currentDrugApprehender.Contains(randomOfficer))
                 {
                     continue;
                 }
@@ -293,7 +305,7 @@ namespace NACopsV1
                     foreach (PoliceOfficer officer in officers)
                     {
                         float distance = Vector3.Distance(officer.transform.position, playerPosition);
-                        if (distance < closestDistance && !currentPIs.Contains(officer))
+                        if (distance < closestDistance && !currentPIs.Contains(officer) && !currentDrugApprehender.Contains(officer))
                         {
                             closestDistance = distance;
                             nearestOfficer = officer;

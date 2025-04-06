@@ -3,20 +3,17 @@ using System.Collections;
 using System.Reflection;
 using ScheduleOne.PlayerScripts;
 using ScheduleOne.Police;
-using ScheduleOne.NPCs;
 using UnityEngine;
 using ScheduleOne.NPCs.Behaviour;
-using ScheduleOne.NPCs.Schedules;
 using ScheduleOne.GameTime;
-using ScheduleOne.Audio;
+using ScheduleOne.AvatarFramework.Equipping;
+using HarmonyLib;
+using ScheduleOne.Product;
+
 [assembly: MelonInfo(typeof(NACopsV1.NACops), NACopsV1.BuildInfo.Name, NACopsV1.BuildInfo.Version, NACopsV1.BuildInfo.Author, NACopsV1.BuildInfo.DownloadLink)]
 [assembly: MelonColor()]
 [assembly: MelonOptionalDependencies("FishNet.Runtime")]
-[assembly: MelonGame(null, null)]
-
-// Create and Setup a MelonGame Attribute to mark a Melon as Universal or Compatible with specific Games.
-// If no MelonGame Attribute is found or any of the Values for any MelonGame Attribute on the Melon is null or empty it will be assumed the Melon is Universal.
-// Values for MelonGame Attribute can be found in the Game's app.info file or printed at the top of every log directly beneath the Unity version.
+[assembly: MelonGame("TVGS", "Schedule I")]
 
 namespace NACopsV1
 {
@@ -26,45 +23,119 @@ namespace NACopsV1
         public const string Description = "Crazyyyy cops";
         public const string Author = "XOWithSauce";
         public const string Company = null;
-        public const string Version = "1.3";
+        public const string Version = "1.4";
         public const string DownloadLink = null;
     }
     public class NACops : MelonMod
     {
-        PoliceOfficer[] officers;
+        private static HarmonyLib.Harmony harmonyInstance;
+
+        static PoliceOfficer[] officers;
         List<object> coros = new();
-        private HashSet<PoliceOfficer> currentPIs = new HashSet<PoliceOfficer>();
+        public static HashSet<PoliceOfficer> currentPIs = new HashSet<PoliceOfficer>();
 
         public override void OnApplicationStart()
         {
             MelonLogger.Msg("NACops Loaded, Enjoy getting fucked by the POPO!!");
+            harmonyInstance = new HarmonyLib.Harmony(BuildInfo.Name);
+            harmonyInstance.PatchAll(Assembly.GetExecutingAssembly());
+        }
+
+        [HarmonyPatch(typeof(Player), "ConsumeProduct")]
+        public static class Player_ConsumeProduct_Patch
+        {
+            public static bool Prefix(Player __instance, ProductItemInstance product)
+            {
+                MelonCoroutines.Start(DrugConsumedCoro(__instance, product));
+                return true;
+            }
+        }
+
+        private static IEnumerator DrugConsumedCoro(Player player, ProductItemInstance product)
+        {
+            if (product is WeedInstance weed)
+            {
+                yield return new WaitForSeconds(10f);
+                PoliceOfficer noticeOfficer = null;
+                float smallestDistance = 20f;
+                foreach(PoliceOfficer offc in officers)
+                {
+                    float distance = Vector3.Distance(offc.transform.position, player.transform.position);
+                    if (distance < 20f && distance < smallestDistance && offc.Movement.CanMove() && !currentPIs.Contains(offc))
+                    {
+                        smallestDistance = distance;
+                        noticeOfficer = offc;
+                    }
+                }
+
+                if (noticeOfficer.awareness.VisionCone.IsPointWithinSight(player.transform.position, ignoreLoS: true))
+                {
+                    MelonLogger.Msg("Point within immediate sight apprehend drug user");
+                    noticeOfficer.BeginBodySearch_Networked(player.NetworkObject);
+                    yield return null;
+                }
+
+                if (noticeOfficer != null)
+                {
+                    for (int i = 0; i <= 15; i++)
+                    {
+                        MelonLogger.Msg($"Officer searching for drug user for {i} seconds");
+                        noticeOfficer.Movement.FacePoint(player.transform.position, lerpTime: 0.1f);
+                        yield return new WaitForSeconds(0.2f);
+                        if (noticeOfficer.awareness.VisionCone.IsPlayerVisible(player))
+                        {
+                            MelonLogger.Msg("PlayerInVision, apprehend drug user");
+                            noticeOfficer.BeginBodySearch_Networked(player.NetworkObject);
+                            break;
+                        }
+
+                        yield return new WaitForSeconds(0.2f);
+                        noticeOfficer.Movement.GetClosestReachablePoint(player.transform.position, out Vector3 pos);
+                        if (noticeOfficer.Movement.CanMove() && noticeOfficer.Movement.CanGetTo(pos))
+                        {
+                            noticeOfficer.Movement.SetDestination(pos);
+                        }
+                        else
+                        {
+                            MelonLogger.Msg($"Officer cant move or go to position, cancelling.");
+                            break;
+                        }
+                        yield return new WaitForSeconds(0.6f);
+                    }
+                } 
+            }
+            else
+            {
+                yield return null;
+            }
         }
 
         public override void OnSceneWasInitialized(int buildIndex, string sceneName)
         {
             if (buildIndex == 1)
             {
-                if (this.officers == null || this.officers.Length == 0)
-                    this.officers = UnityEngine.Object.FindObjectsOfType<PoliceOfficer>(true);
+                officers = UnityEngine.Object.FindObjectsOfType<PoliceOfficer>(true);
 
                 this.coros.Add(MelonCoroutines.Start(this.SetOfficers()));
                 this.coros.Add(MelonCoroutines.Start(this.CrazyCops()));
                 this.coros.Add(MelonCoroutines.Start(this.NearbyCrazyCop()));
                 this.coros.Add(MelonCoroutines.Start(this.NearbyLethalCop()));
                 this.coros.Add(MelonCoroutines.Start(this.PrivateInvestigator()));
-            } else
+            }
+            else
             {
-                foreach(object coro in coros)
+                foreach (object coro in coros)
                 {
                     MelonCoroutines.Stop(coro);
                 }
                 coros.Clear();
+                currentPIs.Clear();
             }
         }
 
         private IEnumerator NearbyLethalCop()
         {
-            for (; ;)
+            for (; ; )
             {
                 yield return new WaitForSeconds(UnityEngine.Random.Range(8f, 20f));
                 Player[] players = UnityEngine.Object.FindObjectsOfType<Player>(true);
@@ -118,11 +189,12 @@ namespace NACopsV1
                             nearestOfficer.BeginBodySearch_Networked(player.NetworkObject);
                             nearestOfficer.Movement.WalkSpeed = 2.4f;
                             break;
-                        } else { continue; }
+                        }
+                        else { continue; }
                     }
                 }
             }
-            
+
         }
 
         private IEnumerator PrivateInvestigator()
@@ -141,19 +213,16 @@ namespace NACopsV1
                 EDay currentDay = TimeManager.Instance.CurrentDay;
                 if (currentDay.ToString().Contains("Saturday") || currentDay.ToString().Contains("Sunday"))
                 {
-                    // MelonLogger.Msg("Can not appoint PI during weekend");
                     continue;
                 }
 
                 if (currentPIs.Contains(randomOfficer))
                 {
-                    // MelonLogger.Msg("Officer is already a PI, skipping.");
                     continue;
                 }
 
                 currentPIs.Add(randomOfficer);
 
-                //MelonLogger.Msg("Hired a Private Investigator");
                 float elapsed = 0f;
                 for (; ; )
                 {
@@ -164,19 +233,16 @@ namespace NACopsV1
 
                     if (!randomOfficer.Movement.CanMove())
                     {
-                        //MelonLogger.Msg("Officer cant move! Cancelling.");
                         break;
                     }
 
                     if (elapsed >= maxTime)
                     {
-                        //MelonLogger.Msg("Private Investigator session ended: Max time reached.");
                         break;
                     }
 
                     if (randomOfficer.Movement.CanGetTo(randomPlayer.transform.position, proximityReq: 100f) && distance >= 20f)
                     {
-                        //MelonLogger.Msg("Setting PI destination");
                         if (randomOfficer.Movement.IsPaused)
                             randomOfficer.Movement.ResumeMovement();
 
@@ -191,15 +257,12 @@ namespace NACopsV1
                     }
                     else if (randomOfficer.Movement.CanGetTo(randomPlayer.transform.position, proximityReq: 100f) && distance <= 20f)
                     {
-                        //MelonLogger.Msg("Suspect In Proximity... Monitoring.");
                         if (!randomOfficer.Movement.IsPaused)
                             randomOfficer.Movement.PauseMovement();
                         randomOfficer.Movement.FacePoint(randomPlayer.transform.position, lerpTime: 0.9f);
                     }
                     else
                     {
-
-                        //MelonLogger.Msg("PI destination is outside proximity. Cancelling.");
                         break;
                     }
                 }
@@ -262,85 +325,6 @@ namespace NACopsV1
 
             try
             {
-                foreach (PoliceOfficer obj in officers)
-                {
-                    if (obj.ProxCircle != null)
-                    {
-                        obj.ProxCircle.SetRadius(10f);
-                        // MelonLogger.Msg($"Set Officer proximity radius to 10f.");
-                    }
-                    else
-                    {
-                        MelonLogger.Warning($"Officer has no ProxCircle assigned.");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Error("Error changing Cop Proximity Circle: " + ex.Message);
-            }
-
-            try
-            {
-                Type type = Type.GetType("ScheduleOne.Police.PoliceOfficer, Assembly-CSharp");
-                FieldInfo field = type.GetField("BodySearchChance", BindingFlags.Instance | BindingFlags.Public);
-                if (field != null)
-                {
-                    foreach (PoliceOfficer obj in officers)
-                    {
-                        // MelonLogger.Msg("BodySearchChance Set");
-                        field.SetValue(obj, 1f);
-                    }
-                }
-                else
-                {
-                    MelonLogger.Error("BodySearchChance not a valid field");
-                }
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Error("Error changing Cop BodySearchChance variables: " + ex.Message);
-            }
-
-            try
-            {
-                Type type = Type.GetType("ScheduleOne.Police.PoliceOfficer, Assembly-CSharp");
-                FieldInfo field = type.GetField("BodySearchDuration", BindingFlags.Instance | BindingFlags.Public);
-                if (field != null)
-                {
-                    foreach (PoliceOfficer obj in officers)
-                    {
-                        // MelonLogger.Msg("BodySearchDuration Set");
-
-                        field.SetValue(obj, 20f);
-                    }
-                }
-                else
-                {
-                    MelonLogger.Error("BodySearchChance not a valid field");
-                }
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Error("Error changing Cop BodySearchChance variables: " + ex.Message);
-            }
-
-            try
-            {
-                foreach (PoliceOfficer officer in officers)
-                {
-                    officer.Leniency = 0.1f;
-                    officer.Suspicion = 1f;
-                    officer.OverrideAggression(1f);
-                }
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Error("Error changing Cop variables: " + ex.Message);
-            }
-
-            try
-            {
                 foreach (PoliceOfficer officer in officers)
                 {
                     BodySearchBehaviour bodySearch = officer.GetComponent<BodySearchBehaviour>();
@@ -354,8 +338,34 @@ namespace NACopsV1
 
             foreach (PoliceOfficer officer in officers)
             {
-                officer.Movement.RunSpeed = 9f;
+                officer.Leniency = 0.1f;
+                officer.Suspicion = 1f;
+                officer.OverrideAggression(1f);
+                officer.BodySearchDuration = 20f;
+                officer.BodySearchChance = 1f;
+                officer.Movement.RunSpeed = 10f;
                 officer.Movement.WalkSpeed = 2.4f;
+                officer.behaviour.CombatBehaviour.GiveUpRange = 40f;
+                officer.behaviour.CombatBehaviour.GiveUpTime = 60f;
+                officer.behaviour.CombatBehaviour.DefaultSearchTime = 60f;
+                officer.behaviour.CombatBehaviour.DefaultMovementSpeed = 10f;
+                officer.behaviour.CombatBehaviour.GiveUpAfterSuccessfulHits = 40;
+
+                AvatarRangedWeapon rangedWeapon = officer.GunPrefab as AvatarRangedWeapon;
+                if (rangedWeapon != null)
+                {
+                    rangedWeapon.CanShootWhileMoving = true;
+                    rangedWeapon.MagazineSize = 20;
+                    rangedWeapon.MaxFireRate = 0.1f;
+                    rangedWeapon.MaxUseRange = 20f;
+                    rangedWeapon.ReloadTime = 0.5f;
+                    rangedWeapon.RaiseTime = 0.2f;
+                    rangedWeapon.HitChange_MaxRange = 0.3f;
+                    rangedWeapon.HitChange_MinRange = 0.8f;
+                } else
+                {
+                    MelonLogger.Msg("Failed to access Ranged Weapon of officer.");
+                }
             }
 
             yield return null;
@@ -365,20 +375,25 @@ namespace NACopsV1
         {
             if (bodySearch == null) return;
 
-            FieldInfo timeOutsideRangeField = typeof(BodySearchBehaviour).GetField("timeOutsideRange", BindingFlags.NonPublic | BindingFlags.Instance);
-            if (timeOutsideRangeField != null)
+            try
             {
-                timeOutsideRangeField.SetValue(bodySearch, 30f);
-            }
+                FieldInfo timeOutsideRangeField = typeof(BodySearchBehaviour).GetField("timeOutsideRange", BindingFlags.NonPublic | BindingFlags.Instance);
+                if (timeOutsideRangeField != null)
+                {
+                    timeOutsideRangeField.SetValue(bodySearch, 30f);
+                }
 
-            FieldInfo targetDistanceField = typeof(BodySearchBehaviour).GetField("targetDistanceOnStart", BindingFlags.NonPublic | BindingFlags.Instance);
-            if (targetDistanceField != null)
+                FieldInfo targetDistanceField = typeof(BodySearchBehaviour).GetField("targetDistanceOnStart", BindingFlags.NonPublic | BindingFlags.Instance);
+                if (targetDistanceField != null)
+                {
+                    float currentDistance = (float)targetDistanceField.GetValue(bodySearch);
+                    targetDistanceField.SetValue(bodySearch, currentDistance + 30f);
+                }
+            } 
+            catch (Exception ex) 
             {
-                float currentDistance = (float)targetDistanceField.GetValue(bodySearch);
-                targetDistanceField.SetValue(bodySearch, currentDistance + 30f);
+                MelonLogger.Warning($"Failed to change body search behaviour: {ex}");
             }
-
-            // Debug.Log("Modified BodySearchBehaviour: Increased timeOutsideRange and distance.");
         }
     }
 }

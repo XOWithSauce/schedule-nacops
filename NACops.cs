@@ -1,4 +1,4 @@
-﻿using MelonLoader;
+using MelonLoader;
 using System.Collections;
 using System.Reflection;
 using ScheduleOne.PlayerScripts;
@@ -9,6 +9,12 @@ using ScheduleOne.GameTime;
 using ScheduleOne.AvatarFramework.Equipping;
 using HarmonyLib;
 using ScheduleOne.Product;
+using ScheduleOne.VoiceOver;
+using ScheduleOne.Money;
+using ScheduleOne.Law;
+using ScheduleOne.AvatarFramework;
+using static ScheduleOne.AvatarFramework.AvatarSettings;
+
 
 [assembly: MelonInfo(typeof(NACopsV1.NACops), NACopsV1.BuildInfo.Name, NACopsV1.BuildInfo.Version, NACopsV1.BuildInfo.Author, NACopsV1.BuildInfo.DownloadLink)]
 [assembly: MelonColor()]
@@ -23,25 +29,52 @@ namespace NACopsV1
         public const string Description = "Crazyyyy cops";
         public const string Author = "XOWithSauce";
         public const string Company = null;
-        public const string Version = "1.4";
+        public const string Version = "1.5";
         public const string DownloadLink = null;
     }
+
     public class NACops : MelonMod
     {
         private static HarmonyLib.Harmony harmonyInstance;
-
         static PoliceOfficer[] officers;
         public static List<object> coros = new();
         public static HashSet<PoliceOfficer> currentPIs = new HashSet<PoliceOfficer>();
         public static HashSet<PoliceOfficer> currentDrugApprehender = new HashSet<PoliceOfficer>();
 
+        #region Unity
         public override void OnApplicationStart()
         {
-            // MelonLogger.Msg("NACops Loaded, Enjoy getting fucked by the POPO!!");
+            // // MelonLogger.Msg("NACops Loaded, Enjoy getting fucked by the POPO!!");
             harmonyInstance = new HarmonyLib.Harmony(BuildInfo.Name);
             harmonyInstance.PatchAll(Assembly.GetExecutingAssembly());
         }
+        public override void OnSceneWasInitialized(int buildIndex, string sceneName)
+        {
+            if (buildIndex == 1)
+            {
+                // MelonLogger.Msg("Start State");
+                officers = UnityEngine.Object.FindObjectsOfType<PoliceOfficer>(true);
+                coros.Add(MelonCoroutines.Start(this.SetOfficers()));
+                coros.Add(MelonCoroutines.Start(this.CrazyCops()));
+                coros.Add(MelonCoroutines.Start(this.NearbyCrazyCop()));
+                coros.Add(MelonCoroutines.Start(this.NearbyLethalCop()));
+                coros.Add(MelonCoroutines.Start(this.PrivateInvestigator()));
+            }
+            else
+            {
+                // MelonLogger.Msg("Clear State");
+                foreach (object coro in coros)
+                {
+                    MelonCoroutines.Stop(coro);
+                }
+                coros.Clear();
+                currentPIs.Clear();
+                currentDrugApprehender.Clear();
+            }
+        }
+        #endregion
 
+        #region Harmony
         [HarmonyPatch(typeof(Player), "ConsumeProduct")]
         public static class Player_ConsumeProduct_Patch
         {
@@ -62,7 +95,7 @@ namespace NACopsV1
                 foreach(PoliceOfficer offc in officers)
                 {
                     float distance = Vector3.Distance(offc.transform.position, player.transform.position);
-                    if (distance < 20f && distance < smallestDistance && offc.Movement.CanMove() && !currentPIs.Contains(offc) && !currentDrugApprehender.Contains(offc))
+                    if (distance < 20f && distance < smallestDistance && offc.Movement.CanMove() && !currentPIs.Contains(offc) && !currentDrugApprehender.Contains(offc) && currentDrugApprehender.Count < 1)
                     {
                         smallestDistance = distance;
                         noticeOfficer = offc;
@@ -79,6 +112,7 @@ namespace NACopsV1
                 {
                     // MelonLogger.Msg("Point within immediate sight apprehend drug user");
                     noticeOfficer.BeginBodySearch_Networked(player.NetworkObject);
+                    player.CrimeData.AddCrime(new FailureToComply(), UnityEngine.Random.Range(1, 30));
                     apprehending = true;
                 }
 
@@ -93,6 +127,10 @@ namespace NACopsV1
                         {
                             // MelonLogger.Msg("PlayerInVision, apprehend drug user");
                             noticeOfficer.BeginBodySearch_Networked(player.NetworkObject);
+                            if (UnityEngine.Random.Range(1f, 0f) > 0.8f)
+                                player.CrimeData.AddCrime(new PossessingHighSeverityDrug(), UnityEngine.Random.Range(1, 4));
+                            if (UnityEngine.Random.Range(1f, 0f) > 0.8f) 
+                                player.CrimeData.AddCrime(new Evading());
                             break;
                         }
 
@@ -123,44 +161,22 @@ namespace NACopsV1
             if (currentDrugApprehender.Contains(offc))
                 currentDrugApprehender.Remove(offc);
         }
+        #endregion
 
-        public override void OnSceneWasInitialized(int buildIndex, string sceneName)
-        {
-            if (buildIndex == 1)
-            {
-                // MelonLogger.Msg("Start State");
-                officers = UnityEngine.Object.FindObjectsOfType<PoliceOfficer>(true);
-
-                coros.Add(MelonCoroutines.Start(this.SetOfficers()));
-                coros.Add(MelonCoroutines.Start(this.CrazyCops()));
-                coros.Add(MelonCoroutines.Start(this.NearbyCrazyCop()));
-                coros.Add(MelonCoroutines.Start(this.NearbyLethalCop()));
-                coros.Add(MelonCoroutines.Start(this.PrivateInvestigator()));
-            }
-            else
-            {
-                // MelonLogger.Msg("Clear State");
-                foreach (object coro in coros)
-                {
-                    MelonCoroutines.Stop(coro);
-                }
-                coros.Clear();
-                currentPIs.Clear();
-                currentDrugApprehender.Clear();
-            }
-        }
-
+        #region Base Coroutines
         private IEnumerator NearbyLethalCop()
         {
             // MelonLogger.Msg("Nearby Lethal Cop");
             for (; ; )
             {
-                yield return new WaitForSeconds(UnityEngine.Random.Range(8f, 20f));
+                yield return new WaitForSeconds(20f);
+                (float min, float max) = ThresholdUtils.Evaluate(ThresholdMappings.LethalCopFreq, TimeManager.Instance.ElapsedDays);
+                yield return new WaitForSeconds(UnityEngine.Random.Range(min, max));
                 // MelonLogger.Msg("Nearby Lethal Cop Evaluate");
                 Player[] players = UnityEngine.Object.FindObjectsOfType<Player>(true);
                 PoliceOfficer nearestOfficer = null;
 
-                float minDistance = 6f;
+                float minDistance = UnityEngine.Random.Range(4f, 8f);
                 foreach (Player player in players)
                 {
                     foreach (PoliceOfficer officer in officers)
@@ -191,14 +207,18 @@ namespace NACopsV1
             // MelonLogger.Msg("Nearby Crazy Cop");
             for (; ; )
             {
-                yield return new WaitForSeconds(UnityEngine.Random.Range(60f, 480f));
+                yield return new WaitForSeconds(20f);
+                (float min, float max) = ThresholdUtils.Evaluate(ThresholdMappings.NearbyCrazThres, TimeManager.Instance.ElapsedDays);
+                yield return new WaitForSeconds(UnityEngine.Random.Range(min, max));
                 // MelonLogger.Msg("Nearby Crazy Cop Evaluate");
                 Player[] players = UnityEngine.Object.FindObjectsOfType<Player>(true);
 
                 PoliceOfficer nearestOfficer = null;
-                float minDistance = 30f;
+                float minDistance = UnityEngine.Random.Range(20f,30f);
                 foreach (Player player in players)
                 {
+                    if (player.CurrentProperty != null)
+                        continue;
                     foreach (PoliceOfficer officer in officers)
                     {
                         float distance = Vector3.Distance(officer.transform.position, player.transform.position);
@@ -207,10 +227,28 @@ namespace NACopsV1
                             // MelonLogger.Msg("Nearby Crazy Cop Run");
                             nearestOfficer = officer;
                             nearestOfficer.Movement.WalkSpeed = 7f;
-                            nearestOfficer.Movement.SetDestination(player.transform.position);
+                            nearestOfficer.Movement.GetClosestReachablePoint(player.transform.position, out Vector3 pos);
+                            if (nearestOfficer.Movement.CanMove() && nearestOfficer.Movement.CanGetTo(pos))
+                            {
+                                nearestOfficer.Movement.SetDestination(pos);
+                            } 
+                            else
+                            {
+                                break;
+                            }
                             yield return new WaitForSeconds(8f);
-                            nearestOfficer.BeginBodySearch_Networked(player.NetworkObject);
+                            nearestOfficer.ChatterVO.Play(EVOLineType.PoliceChatter);
+                            yield return new WaitForSeconds(0.2f);
+                            if (nearestOfficer.awareness.VisionCone.IsPlayerVisible(player))
+                            {
+                                nearestOfficer.BeginBodySearch_Networked(player.NetworkObject);
+                                if (UnityEngine.Random.Range(0f, 1f) > 0.8f)
+                                    player.CrimeData.AddCrime(new FailureToComply(), 10);
+                            }
+
+                            nearestOfficer.ChatterVO.Play(EVOLineType.PoliceChatter);
                             nearestOfficer.Movement.WalkSpeed = 2.4f;
+                            
                             break;
                         }
                         else { continue; }
@@ -222,31 +260,78 @@ namespace NACopsV1
 
         private IEnumerator PrivateInvestigator()
         {
-            // MelonLogger.Msg("Private Investigator");
-            float maxTime = 480f;
+            float maxTime = 180f;
 
             for (; ; )
             {
-                yield return new WaitForSeconds(UnityEngine.Random.Range(480f, 2880f));
-                // MelonLogger.Msg("PI Evaluate");
+                yield return new WaitForSeconds(20f);
+                    
+                (float min, float max) = ThresholdUtils.Evaluate(ThresholdMappings.PIThres, (int)MoneyManager.Instance.LifetimeEarnings);
+                yield return new WaitForSeconds(UnityEngine.Random.Range(min, max));
+                //MelonLogger.Msg("PI Evaluate");
                 Player[] players = UnityEngine.Object.FindObjectsOfType<Player>(true);
                 PoliceOfficer randomOfficer = officers[UnityEngine.Random.Range(0, officers.Length)];
                 Player randomPlayer = players[UnityEngine.Random.Range(0, players.Length)];
 
-                randomOfficer.Movement.WalkSpeed = 3f;
-
                 EDay currentDay = TimeManager.Instance.CurrentDay;
                 if (currentDay.ToString().Contains("Saturday") || currentDay.ToString().Contains("Sunday"))
-                {
                     continue;
-                }
 
-                if (currentPIs.Contains(randomOfficer) || currentDrugApprehender.Contains(randomOfficer))
-                {
+                if (currentPIs.Contains(randomOfficer) || currentDrugApprehender.Contains(randomOfficer) || currentPIs.Count >= 1)
                     continue;
-                }
 
+                if (randomOfficer.isInBuilding || randomOfficer.IsInVehicle)
+                    continue;
+
+                // MelonLogger.Msg("PI Proceed");
+                randomOfficer.Movement.WalkSpeed = 3f;
                 currentPIs.Add(randomOfficer);
+                randomOfficer.Avatar.Effects.SetEyeLightEmission(intensity: 0.2f, color: Color.yellow);
+
+                AvatarSettings orig = DeepCopyAvatarSettings(randomOfficer.Avatar.CurrentSettings);
+                var bodySettings = randomOfficer.Avatar.CurrentSettings.BodyLayerSettings;
+                var accessorySettings = randomOfficer.Avatar.CurrentSettings.AccessorySettings;
+
+                for (int i = 0; i < bodySettings.Count; i++)
+                {
+                    var layer = bodySettings[i];
+                    layer.layerPath = "";
+                    layer.layerTint = Color.white;
+                    bodySettings[i] = layer;
+                }
+
+                for (int i = 0; i < accessorySettings.Count; i++)
+                {
+                    var acc = accessorySettings[i];
+                    acc.path = "";
+                    acc.color = Color.white;
+                    accessorySettings[i] = acc;
+                }
+
+                var jeans = bodySettings[2];
+                jeans.layerPath = "Avatar/Layers/Bottom/Jeans";
+                jeans.layerTint = new Color(0.396f, 0.396f, 0.396f);
+                bodySettings[2] = jeans;
+                var shirt = bodySettings[3];
+                shirt.layerPath = "Avatar/Layers/Top/RolledButtonUp";
+                shirt.layerTint = new Color(0.326f, 0.578f, 0.896f);
+                bodySettings[3] = shirt;
+
+                var cap = accessorySettings[0];
+                cap.path = "Avatar/Accessories/Head/Cap/Cap";
+                cap.color = new Color(0.613f, 0.493f, 0.344f);
+                accessorySettings[0] = cap;
+                var blazer = accessorySettings[1];
+                blazer.path = "Avatar/Accessories/Chest/Blazer/Blazer";
+                blazer.color = new Color(0.613f, 0.493f, 0.344f);
+                accessorySettings[1] = blazer;
+                var sneakers = accessorySettings[2];
+                sneakers.path = "Avatar/Accessories/Feet/Sneakers/Sneakers";
+                sneakers.color = new Color(0.151f, 0.151f, 0.151f);
+                accessorySettings[2] = sneakers;
+
+                randomOfficer.Avatar.ApplyBodyLayerSettings(randomOfficer.Avatar.CurrentSettings);
+                randomOfficer.Avatar.ApplyAccessorySettings(randomOfficer.Avatar.CurrentSettings);
 
                 float elapsed = 0f;
                 for (; ; )
@@ -255,16 +340,10 @@ namespace NACopsV1
                     elapsed += 5f;
 
                     float distance = Vector3.Distance(randomOfficer.transform.position, randomPlayer.transform.position);
+                    // MelonLogger.Msg($"PI Run dist: {distance}");
 
-                    if (!randomOfficer.Movement.CanMove())
-                    {
+                    if (!randomOfficer.Movement.CanMove() || elapsed >= maxTime)
                         break;
-                    }
-
-                    if (elapsed >= maxTime)
-                    {
-                        break;
-                    }
 
                     if (randomOfficer.Movement.CanGetTo(randomPlayer.transform.position, proximityReq: 100f) && distance >= 20f)
                     {
@@ -285,6 +364,10 @@ namespace NACopsV1
                         if (!randomOfficer.Movement.IsPaused)
                             randomOfficer.Movement.PauseMovement();
                         randomOfficer.Movement.FacePoint(randomPlayer.transform.position, lerpTime: 0.9f);
+                        if (UnityEngine.Random.Range(0f, 1f) > 0.95f)
+                            randomPlayer.CrimeData.AddCrime(new DrugTrafficking());
+                        if (UnityEngine.Random.Range(0f, 1f) > 0.95f)
+                            randomPlayer.CrimeData.AddCrime(new AttemptingToSell());
                     }
                     else
                     {
@@ -292,10 +375,15 @@ namespace NACopsV1
                     }
                 }
 
+                // MelonLogger.Msg("PI Finished");
                 if (randomOfficer.Movement.IsPaused)
                     randomOfficer.Movement.ResumeMovement();
                 randomOfficer.Movement.WalkSpeed = 2.4f;
+                randomOfficer.Avatar.Effects.SetEyeLightEmission(0f, Color.white);
+                randomOfficer.Avatar.ApplyBodyLayerSettings(orig);
+                randomOfficer.Avatar.ApplyAccessorySettings(orig);
                 currentPIs.Remove(randomOfficer);
+                // MelonLogger.Msg("PI Reverted");
             }
         }
 
@@ -305,7 +393,9 @@ namespace NACopsV1
 
             for (; ; )
             {
-                yield return new WaitForSeconds(UnityEngine.Random.Range(1440f, 2880f));
+                yield return new WaitForSeconds(20f);
+                (float min, float max) = ThresholdUtils.Evaluate(ThresholdMappings.CrazyCopsFreq, TimeManager.Instance.ElapsedDays);
+                yield return new WaitForSeconds(UnityEngine.Random.Range(min, max));
                 // MelonLogger.Msg("Crazy Cops Evaluate");
 
                 Player[] players = UnityEngine.Object.FindObjectsOfType<Player>(true);
@@ -314,10 +404,13 @@ namespace NACopsV1
                 {
                     // MelonLogger.Msg("Crazy Cops Run");
                     Player randomPlayer = players[UnityEngine.Random.Range(0, players.Length)];
+                    if (randomPlayer.CurrentProperty != null)
+                        continue;
+
                     Vector3 playerPosition = randomPlayer.transform.position;
 
                     PoliceOfficer nearestOfficer = null;
-                    float closestDistance = float.MaxValue;
+                    float closestDistance = 100f;
 
                     foreach (PoliceOfficer officer in officers)
                     {
@@ -329,11 +422,13 @@ namespace NACopsV1
                         }
                     }
 
-                    if (nearestOfficer != null && closestDistance < 40f)
+                    if (nearestOfficer != null && closestDistance < UnityEngine.Random.Range(10f, 30f))
                     {
                         try
                         {
                             nearestOfficer.BeginFootPursuit_Networked(randomPlayer.NetworkObject, true);
+                            randomPlayer.CrimeData.AddCrime(new PossessingHighSeverityDrug(), 60);
+
                         }
                         catch (Exception ex)
                         {
@@ -347,38 +442,38 @@ namespace NACopsV1
                 }
             }
         }
+        #endregion
 
+        #region Base Utils
         private IEnumerator SetOfficers()
         {
-            yield return new WaitForSeconds(10f);
+            yield return new WaitForSeconds(20f);
             // MelonLogger.Msg("Officers variables override");
-            try
+            foreach (PoliceOfficer officer in officers)
             {
-                foreach (PoliceOfficer officer in officers)
-                {
-                    BodySearchBehaviour bodySearch = officer.GetComponent<BodySearchBehaviour>();
-                    OverrideBodySearchEscalation(bodySearch);
-                }
-            }
-            catch (Exception ex)
-            {
-                // MelonLogger.Error("Error changing Cop Body search timeouts " + ex.Message);
+                yield return new WaitForSeconds(0.05f);
+                BodySearchBehaviour bodySearch = officer.GetComponent<BodySearchBehaviour>();
+                OverrideBodySearchEscalation(bodySearch);
             }
 
             foreach (PoliceOfficer officer in officers)
             {
+                yield return new WaitForSeconds(0.05f);
                 officer.Leniency = 0.1f;
                 officer.Suspicion = 1f;
                 officer.OverrideAggression(1f);
                 officer.BodySearchDuration = 20f;
                 officer.BodySearchChance = 1f;
-                officer.Movement.RunSpeed = 10f;
+                officer.Movement.RunSpeed = 9f;
                 officer.Movement.WalkSpeed = 2.4f;
                 officer.behaviour.CombatBehaviour.GiveUpRange = 40f;
                 officer.behaviour.CombatBehaviour.GiveUpTime = 60f;
                 officer.behaviour.CombatBehaviour.DefaultSearchTime = 60f;
-                officer.behaviour.CombatBehaviour.DefaultMovementSpeed = 10f;
+                officer.behaviour.CombatBehaviour.DefaultMovementSpeed = 9f;
                 officer.behaviour.CombatBehaviour.GiveUpAfterSuccessfulHits = 40;
+
+                officer.Health.MaxHealth = 175f;
+                officer.Health.Revive();
 
                 AvatarRangedWeapon rangedWeapon = officer.GunPrefab as AvatarRangedWeapon;
                 if (rangedWeapon != null)
@@ -396,10 +491,27 @@ namespace NACopsV1
                     // MelonLogger.Msg("Failed to access Ranged Weapon of officer.");
                 }
             }
-
+            // MelonLogger.Msg("Officer properties complete");
             yield return null;
         }
+        private AvatarSettings DeepCopyAvatarSettings(AvatarSettings original)
+        {
+            AvatarSettings copy = new AvatarSettings();
 
+            copy.BodyLayerSettings = original.BodyLayerSettings.Select(layer => new LayerSetting
+            {
+                layerPath = layer.layerPath,
+                layerTint = layer.layerTint
+            }).ToList();
+
+            copy.AccessorySettings = original.AccessorySettings.Select(acc => new AccessorySetting
+            {
+                path = acc.path,
+                color = acc.color
+            }).ToList();
+
+            return copy;
+        }
         private void OverrideBodySearchEscalation(BodySearchBehaviour bodySearch)
         {
             if (bodySearch == null) return;
@@ -424,5 +536,87 @@ namespace NACopsV1
                 // MelonLogger.Warning($"Failed to change body search behaviour: {ex}");
             }
         }
+        #endregion
+
+        #region Utils for progression
+        public class MinMaxThreshold
+        {
+            public int MinOf { get; set; }
+            public float Min { get; set; }
+            public float Max { get; set; }
+
+            public MinMaxThreshold(int minOf, float min, float max)
+            {
+                MinOf = minOf;
+                Min = min;
+                Max = max;
+            }
+        }
+        public static class ThresholdUtils
+        {
+            public static (float min, float max) Evaluate(List<MinMaxThreshold> thresholds, int value)
+            {
+                MinMaxThreshold bestMatch = thresholds[0];
+                foreach (var threshold in thresholds)
+                {
+                    if (value >= threshold.MinOf)
+                        bestMatch = threshold;
+                    else
+                        break;
+                }
+
+                return (bestMatch.Min, bestMatch.Max);
+            }
+        }
+
+        public static class ThresholdMappings
+        {
+            // Days total
+            public static readonly List<MinMaxThreshold> LethalCopFreq = new()
+            {
+                new(0,   20f, 50f),
+                new(5,   14f, 40f),
+                new(10,  10f, 30f),
+                new(20,  9f, 30f),
+                new(30,  8f, 20f),
+                new(40,  8f, 20f),
+                new(50,  8f, 20f),
+            };
+            // Days total
+            public static readonly List<MinMaxThreshold> CrazyCopsFreq = new()
+            {
+                new(0,   400f, 800f),
+                new(5,   350f, 700f),
+                new(10,  300f, 600f),
+                new(20,  200f, 600f),
+                new(30,  200f, 500f),
+                new(40,  150f, 450f),
+                new(50,  150f, 400f),
+            };
+            // Days total
+            public static readonly List<MinMaxThreshold> NearbyCrazThres = new()
+            {
+                new(0,   600f, 960f),
+                new(5,   400f, 960f),
+                new(10,  100f, 600f),
+                new(20,  90f, 600f),
+                new(30,  90f, 500f),
+                new(40,  90f, 450f),
+                new(50,  60f, 300f),
+            };
+            // Networth
+            public static readonly List<MinMaxThreshold> PIThres = new()
+            {
+                new(100,     300f, 900f),
+                new(1000,    200f, 800f),
+                new(10000,   100f, 700f),
+                new(30000,   90f, 600f),
+                new(60000,   90f, 500f),
+                new(100000,  90f, 500f),
+                new(300000,  90f, 400f),
+            };
+        }
+
+        #endregion
     }
 }

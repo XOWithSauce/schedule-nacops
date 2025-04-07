@@ -15,11 +15,11 @@ using ScheduleOne.Law;
 using ScheduleOne.AvatarFramework;
 using static ScheduleOne.AvatarFramework.AvatarSettings;
 
-
 [assembly: MelonInfo(typeof(NACopsV1.NACops), NACopsV1.BuildInfo.Name, NACopsV1.BuildInfo.Version, NACopsV1.BuildInfo.Author, NACopsV1.BuildInfo.DownloadLink)]
 [assembly: MelonColor()]
 [assembly: MelonOptionalDependencies("FishNet.Runtime")]
 [assembly: MelonGame("TVGS", "Schedule I")]
+[assembly: HarmonyDontPatchAll]
 
 namespace NACopsV1
 {
@@ -101,6 +101,9 @@ namespace NACopsV1
                         noticeOfficer = offc;
                     }
                 }
+                if (noticeOfficer == null)
+                    yield return null;
+
                 currentDrugApprehender.Add(noticeOfficer);
 
                 yield return new WaitForSeconds(smallestDistance);

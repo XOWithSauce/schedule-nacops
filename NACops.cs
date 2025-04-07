@@ -226,10 +226,10 @@ namespace NACopsV1
                         {
                             // MelonLogger.Msg("Nearby Crazy Cop Run");
                             nearestOfficer = officer;
-                            nearestOfficer.Movement.WalkSpeed = 7f;
                             nearestOfficer.Movement.GetClosestReachablePoint(player.transform.position, out Vector3 pos);
                             if (nearestOfficer.Movement.CanMove() && nearestOfficer.Movement.CanGetTo(pos))
                             {
+                                nearestOfficer.Movement.WalkSpeed = 7f;
                                 nearestOfficer.Movement.SetDestination(pos);
                             } 
                             else
@@ -238,6 +238,7 @@ namespace NACopsV1
                             }
                             yield return new WaitForSeconds(8f);
                             nearestOfficer.ChatterVO.Play(EVOLineType.PoliceChatter);
+                            nearestOfficer.Movement.FacePoint(player.transform.position, lerpTime: 0.2f);
                             yield return new WaitForSeconds(0.2f);
                             if (nearestOfficer.awareness.VisionCone.IsPlayerVisible(player))
                             {
@@ -260,18 +261,27 @@ namespace NACopsV1
 
         private IEnumerator PrivateInvestigator()
         {
+            yield return new WaitForSeconds(20f);
             float maxTime = 180f;
 
             for (; ; )
             {
-                yield return new WaitForSeconds(20f);
-                    
                 (float min, float max) = ThresholdUtils.Evaluate(ThresholdMappings.PIThres, (int)MoneyManager.Instance.LifetimeEarnings);
                 yield return new WaitForSeconds(UnityEngine.Random.Range(min, max));
-                //MelonLogger.Msg("PI Evaluate");
+                // MelonLogger.Msg("PI Evaluate");
                 Player[] players = UnityEngine.Object.FindObjectsOfType<Player>(true);
-                PoliceOfficer randomOfficer = officers[UnityEngine.Random.Range(0, officers.Length)];
                 Player randomPlayer = players[UnityEngine.Random.Range(0, players.Length)];
+
+                PoliceOfficer randomOfficer = officers[UnityEngine.Random.Range(0, officers.Length)]; ;
+                for (int i = 0; i <= 4; i++)
+                {
+                    float distance = Vector3.Distance(randomOfficer.transform.position, randomPlayer.transform.position);
+                    if (distance < 60f)
+                    {
+                        break;
+                    }
+                    randomOfficer = officers[UnityEngine.Random.Range(0, officers.Length)];
+                }
 
                 EDay currentDay = TimeManager.Instance.CurrentDay;
                 if (currentDay.ToString().Contains("Saturday") || currentDay.ToString().Contains("Sunday"))
@@ -280,13 +290,30 @@ namespace NACopsV1
                 if (currentPIs.Contains(randomOfficer) || currentDrugApprehender.Contains(randomOfficer) || currentPIs.Count >= 1)
                     continue;
 
-                if (randomOfficer.isInBuilding || randomOfficer.IsInVehicle)
-                    continue;
-
                 // MelonLogger.Msg("PI Proceed");
+
+                if (randomOfficer.behaviour.activeBehaviour)
+                    randomOfficer.behaviour.activeBehaviour.SendEnd();
+
+                if (randomOfficer.isInBuilding)
+                    randomOfficer.ExitBuilding();
+
+                if (randomOfficer.IsInVehicle)
+                    randomOfficer.ExitVehicle();
+
+                if (Vector3.Distance(randomOfficer.transform.position, randomPlayer.transform.position) > 30f)
+                {
+                    float xInitOffset = UnityEngine.Random.Range(20f, 30f);
+                    float zInitOffset = UnityEngine.Random.Range(20f, 30f);
+                    xInitOffset *= UnityEngine.Random.Range(0f, 1f) > 0.5f ? 1f : -1f;
+                    zInitOffset *= UnityEngine.Random.Range(0f, 1f) > 0.5f ? 1f : -1f;
+                    Vector3 targetWarpPosition = randomPlayer.transform.position + new Vector3(xInitOffset, 0f, zInitOffset);
+                    randomOfficer.Movement.GetClosestReachablePoint(targetWarpPosition, out Vector3 warpInit);
+                    randomOfficer.Movement.Warp(warpInit);
+                }
+
                 randomOfficer.Movement.WalkSpeed = 3f;
                 currentPIs.Add(randomOfficer);
-                randomOfficer.Avatar.Effects.SetEyeLightEmission(intensity: 0.2f, color: Color.yellow);
 
                 AvatarSettings orig = DeepCopyAvatarSettings(randomOfficer.Avatar.CurrentSettings);
                 var bodySettings = randomOfficer.Avatar.CurrentSettings.BodyLayerSettings;
@@ -340,11 +367,12 @@ namespace NACopsV1
                     elapsed += 5f;
 
                     float distance = Vector3.Distance(randomOfficer.transform.position, randomPlayer.transform.position);
-                    // MelonLogger.Msg($"PI Run dist: {distance}");
+                    //MelonLogger.Msg($"PI Run dist: {distance}");
 
                     if (!randomOfficer.Movement.CanMove() || elapsed >= maxTime)
                         break;
 
+                    randomOfficer.behaviour.activeBehaviour = null;
                     if (randomOfficer.Movement.CanGetTo(randomPlayer.transform.position, proximityReq: 100f) && distance >= 20f)
                     {
                         if (randomOfficer.Movement.IsPaused)
@@ -361,6 +389,7 @@ namespace NACopsV1
                     }
                     else if (randomOfficer.Movement.CanGetTo(randomPlayer.transform.position, proximityReq: 100f) && distance <= 20f)
                     {
+                        //MelonLogger.Msg("PI Monitoring");
                         if (!randomOfficer.Movement.IsPaused)
                             randomOfficer.Movement.PauseMovement();
                         randomOfficer.Movement.FacePoint(randomPlayer.transform.position, lerpTime: 0.9f);
@@ -371,15 +400,15 @@ namespace NACopsV1
                     }
                     else
                     {
+                        //MelonLogger.Msg("PI Cant reach target");
                         break;
                     }
                 }
 
-                // MelonLogger.Msg("PI Finished");
+                //MelonLogger.Msg("PI Finished");
                 if (randomOfficer.Movement.IsPaused)
                     randomOfficer.Movement.ResumeMovement();
                 randomOfficer.Movement.WalkSpeed = 2.4f;
-                randomOfficer.Avatar.Effects.SetEyeLightEmission(0f, Color.white);
                 randomOfficer.Avatar.ApplyBodyLayerSettings(orig);
                 randomOfficer.Avatar.ApplyAccessorySettings(orig);
                 currentPIs.Remove(randomOfficer);
@@ -607,13 +636,13 @@ namespace NACopsV1
             // Networth
             public static readonly List<MinMaxThreshold> PIThres = new()
             {
-                new(100,     300f, 900f),
-                new(1000,    200f, 800f),
-                new(10000,   100f, 700f),
-                new(30000,   90f, 600f),
-                new(60000,   90f, 500f),
-                new(100000,  90f, 500f),
-                new(300000,  90f, 400f),
+                new(100,     300f, 400f),
+                new(1000,    200f, 400f),
+                new(10000,   100f, 400f),
+                new(30000,   90f, 300f),
+                new(60000,   90f, 200f),
+                new(100000,  90f, 200f),
+                new(300000,  90f, 200f),
             };
         }
 

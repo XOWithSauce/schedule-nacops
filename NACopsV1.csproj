@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
         <TargetFramework>net48</TargetFramework>
@@ -14,13 +14,16 @@
 
 	<ItemGroup>
 		<Reference Include="Assembly-CSharp">
-			<HintPath>libs\Assembly-CSharp.dll</HintPath>
+			<HintPath>libs\mono\Assembly-CSharp.dll</HintPath>
 		</Reference>
 		<Reference Include="FishNet.Runtime">
-			<HintPath>libs\FishNet.Runtime.dll</HintPath>
+			<HintPath>libs\mono\FishNet.Runtime.dll</HintPath>
 		</Reference>
 		<Reference Include="UnityEngine.CoreModule">
-			<HintPath>libs\UnityEngine.CoreModule.dll</HintPath>
+			<HintPath>libs\mono\UnityEngine.CoreModule.dll</HintPath>
+		</Reference>
+		<Reference Include="UnityEngine.JSONSerializeModule">
+			<HintPath>libs\mono\UnityEngine.JSONSerializeModule.dll</HintPath>
 		</Reference>
 	</ItemGroup>
 

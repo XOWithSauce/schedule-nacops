@@ -265,7 +265,7 @@ namespace NACopsV1
         [HarmonyPatch(typeof(Customer), "SampleOffered")]
         public static class Customer_SampleOffered_Patch
         {
-            public static bool Postfix(Customer __instance)
+            public static bool Prefix(Customer __instance)
             {
                 //MelonLogger.Msg("SampleConsumed Customer Postfix");
                 coros.Add(MelonCoroutines.Start(PreSampleOffered(__instance)));

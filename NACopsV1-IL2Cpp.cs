@@ -20,8 +20,14 @@ using Il2CppFishNet;
 using Il2CppScheduleOne.DevUtilities;
 using MelonLoader.Utils;
 using Il2CppScheduleOne.Economy;
-using Il2CppNewtonsoft.Json;
-using System.Text.Json.Serialization;
+using Il2CppScheduleOne.NPCs;
+using Il2CppFishNet.Managing;
+using Il2CppFishNet.Managing.Object;
+using Il2CppFishNet.Object;
+using UnityEngine.AI;
+using Il2CppScheduleOne.UI.Handover;
+using Il2CppScheduleOne.ItemFramework;
+using Il2CppScheduleOne.Quests;
 
 
 [assembly: MelonInfo(typeof(NACopsV1_IL2Cpp.NACops), NACopsV1_IL2Cpp.BuildInfo.Name, NACopsV1_IL2Cpp.BuildInfo.Version, NACopsV1_IL2Cpp.BuildInfo.Author, NACopsV1_IL2Cpp.BuildInfo.DownloadLink)]
@@ -37,7 +43,7 @@ namespace NACopsV1_IL2Cpp
         public const string Description = "Crazyyyy cops";
         public const string Author = "XOWithSauce";
         public const string Company = null;
-        public const string Version = "1.6.2";
+        public const string Version = "1.7.0";
         public const string DownloadLink = null;
     }
 
@@ -55,8 +61,10 @@ namespace NACopsV1_IL2Cpp
         public bool WeedInvestigator = true;
         public bool CorruptCops = true;
         public bool SnitchingSamples = true;
+        public bool BuyBusts = true;
     }
 
+    #region Ugly il2cpp replacement for json loading please close your eyes
     public static class ConfigLoader
     {
         private static string path = Path.Combine(MelonEnvironment.ModsDirectory, "NACops", "config.json");
@@ -68,9 +76,7 @@ namespace NACopsV1_IL2Cpp
             {
                 try
                 {
-                    MelonLogger.Msg($"Config Path: {path}");
                     string json = File.ReadAllText(path);
-                    MelonLogger.Msg($"Read JSON: {json}");
 
                     string[] lines = json.Trim('{', '}').Split(',');
                     foreach (string line in lines)
@@ -120,10 +126,12 @@ namespace NACopsV1_IL2Cpp
                                 case "SnitchingSamples":
                                     if (bool.TryParse(valueString, out valueBool)) config.SnitchingSamples = valueBool;
                                     break;
+                                case "BuyBusts":
+                                    if (bool.TryParse(valueString, out valueBool)) config.BuyBusts = valueBool;
+                                    break;
                             }
                         }
                     }
-                    MelonLogger.Msg($"Lethal: {config.LethalCops}");
                 }
                 catch (Exception ex)
                 {
@@ -156,6 +164,7 @@ namespace NACopsV1_IL2Cpp
                 json += $"  \"WeedInvestigator\": {config.WeedInvestigator.ToString().ToLower()},\n";
                 json += $"  \"CorruptCops\": {config.CorruptCops.ToString().ToLower()},\n";
                 json += $"  \"SnitchingSamples\": {config.SnitchingSamples.ToString().ToLower()}\n";
+                json += $"  \"BuyBusts\": {config.SnitchingSamples.ToString().ToLower()}\n";
                 json += "}";
 
                 Directory.CreateDirectory(Path.GetDirectoryName(path));
@@ -167,7 +176,7 @@ namespace NACopsV1_IL2Cpp
             }
         }
     }
-
+    #endregion
 
     public class NACops : MelonMod
     {
@@ -177,6 +186,8 @@ namespace NACopsV1_IL2Cpp
         public static HashSet<PoliceOfficer> currentDrugApprehender = new HashSet<PoliceOfficer>();
         public static bool registered = false;
         public static ModConfig currentConfig;
+        public static NetworkManager netManager;
+        public static NetworkObject policeBase = new();
         #region Unity
 
         public override void OnSceneWasInitialized(int buildIndex, string sceneName)
@@ -213,7 +224,9 @@ namespace NACopsV1_IL2Cpp
             if (registered) return;
             currentConfig = ConfigLoader.Load();
             officers = UnityEngine.Object.FindObjectsOfType<PoliceOfficer>(true);
+            netManager = UnityEngine.Object.FindObjectOfType<NetworkManager>(true);
 
+            SetPoliceNPC();
 
             coros.Add(MelonCoroutines.Start(this.SetOfficers()));
             if (currentConfig.CrazyCops)
@@ -363,10 +376,125 @@ namespace NACopsV1_IL2Cpp
         }
         #endregion
 
+        #region Harmony Customer Buy Bust
+        [HarmonyPatch(typeof(Customer), "ProcessHandover")]
+        public static class Customer_ProcessHandover_Patch
+        {
+            public static bool Prefix(Customer __instance, HandoverScreen.EHandoverOutcome outcome, Contract contract, List<ItemInstance> items, bool handoverByPlayer, bool giveBonuses = true)
+            {
+                //MelonLogger.Msg("ProcessHandover Customer Postfix");
+                coros.Add(MelonCoroutines.Start(PreProcessHandover(__instance, handoverByPlayer)));
+                return true;
+            }
+        }
+
+        public static IEnumerator PreProcessHandover(Customer __instance, bool handoverByPlayer)
+        {
+            if (!handoverByPlayer) yield break;
+            if (currentConfig.BuyBusts)
+                MelonCoroutines.Start(SummonBustCop(__instance));
+            yield return null;
+        }
+
+        public static IEnumerator SummonBustCop(Customer customer)
+        {
+            int relation = Mathf.RoundToInt(customer.NPC.RelationData.RelationDelta * 10f);
+            (float min, float max) = ThresholdUtils.Evaluate(ThresholdMappings.BuyBustProbability, relation);
+            if (UnityEngine.Random.Range(min, max) < 0.5) yield break;
+
+            NetworkObject copNet = UnityEngine.Object.Instantiate<NetworkObject>(policeBase);
+            NPC myNpc = copNet.gameObject.GetComponent<NPC>();
+            NavMeshAgent nav = copNet.GetComponent<UnityEngine.AI.NavMeshAgent>();
+            if (nav != null && nav.enabled == false) nav.enabled = true;
+
+            myNpc.ID = $"NACop_{Guid.NewGuid()}";
+            myNpc.FirstName = $"NACop";
+            myNpc.LastName = "";
+            myNpc.transform.parent = NPCManager.Instance.NPCContainer;
+            NPCManager.NPCRegistry.Add(myNpc);
+            yield return new WaitForSeconds(0.1f);
+
+            netManager.ServerManager.Spawn(copNet);
+            yield return new WaitForSeconds(0.3f);
+
+            copNet.gameObject.SetActive(true);
+            yield return new WaitForSeconds(0.1f);
+
+            PoliceOfficer offc = copNet.gameObject.GetComponent<PoliceOfficer>();
+            Player target = null;
+            Vector3 spawnPos = customer.transform.position + customer.transform.forward * 3f;
+            if (offc.Movement.GetClosestReachablePoint(spawnPos, out Vector3 closest))
+            {
+                MelonCoroutines.Start(SetTaser(offc));
+                yield return new WaitForSeconds(0.1f);
+                offc.Movement.Warp(closest);
+                yield return new WaitForSeconds(1f);
+                offc.ChatterVO.Play(EVOLineType.Command);
+                offc.Movement.FacePoint(customer.transform.position);
+                yield return new WaitForSeconds(0.5f);
+                target = Player.GetClosestPlayer(closest, out float distance);
+                target.CrimeData.SetPursuitLevel(PlayerCrimeData.EPursuitLevel.NonLethal);
+                offc.Movement.SetAgentType(NPCMovement.EAgentType.IgnoreCosts);
+                offc.BeginFootPursuit_Networked(target.NetworkObject, false);
+                offc.PursuitBehaviour.SendEnable();
+                target.CrimeData.AddCrime(new AttemptingToSell(), 10);
+            }
+            else
+            {
+                //MelonLogger.Msg("Failed to Get closest reachable position for drug bust");
+                coros.Add(MelonCoroutines.Start(DisposeSummoned(myNpc, true, target)));
+            }
+            coros.Add(MelonCoroutines.Start(DisposeSummoned(myNpc, false, target)));
+            yield return null;
+        }
+
+        public static IEnumerator SetTaser(PoliceOfficer offc)
+        {
+            var taser = offc.TaserPrefab;
+            if (taser != null && taser?.Cast<AvatarRangedWeapon>() is AvatarRangedWeapon rangedWeapon)
+            {
+                rangedWeapon.CanShootWhileMoving = true;
+                rangedWeapon.MagazineSize = 20;
+                rangedWeapon.MaxFireRate = 0.3f;
+                rangedWeapon.MaxUseRange = 24f;
+                rangedWeapon.ReloadTime = 0.2f;
+                rangedWeapon.RaiseTime = 0.1f;
+                rangedWeapon.HitChange_MaxRange = 0.6f;
+                rangedWeapon.HitChange_MinRange = 0.9f;
+            }
+            yield return null;
+        }
+
+        public static IEnumerator DisposeSummoned(NPC npc, bool instant, Player target)
+        {
+            yield return new WaitForSeconds(1f);
+            int lifeTime = 0;
+            int maxTime = 20;
+            if (!instant && target != null && npc != null)
+            {
+                while (lifeTime <= maxTime || target.IsArrested || npc.Health.IsDead || npc.Health.IsKnockedOut)
+                {
+                    lifeTime++;
+                    yield return new WaitForSeconds(1f);
+                }
+            }
+            try
+            {
+                if (npc != null && NPCManager.NPCRegistry.Contains(npc))
+                    NPCManager.NPCRegistry.Remove(npc);
+                if (npc != null && npc.gameObject != null)
+                    UnityEngine.Object.Destroy(npc.gameObject);
+            } catch (Exception ex)
+            {
+                MelonLogger.Error(ex);
+            }
+        }
+        #endregion
+
         #region Base Coroutines
         private IEnumerator NearbyLethalCop()
         {
-            MelonLogger.Msg("Nearby Lethal Cop Enabled");
+            //MelonLogger.Msg("Nearby Lethal Cop Enabled");
             for (; ; )
             {
                 (float min, float max) = ThresholdUtils.Evaluate(ThresholdMappings.LethalCopFreq, TimeManager.Instance.ElapsedDays);
@@ -393,8 +521,6 @@ namespace NACopsV1_IL2Cpp
                             {
                                 player.CrimeData.SetPursuitLevel(PlayerCrimeData.EPursuitLevel.Lethal);
                                 officer.BeginFootPursuit_Networked(player.NetworkObject, false);
-                                officer.PursuitBehaviour.arrestingEnabled = false;
-
                             }
                             break;
                         }
@@ -405,7 +531,7 @@ namespace NACopsV1_IL2Cpp
 
         private IEnumerator NearbyCrazyCop()
         {
-            MelonLogger.Msg("Nearby Crazy Cop Enabled");
+            //MelonLogger.Msg("Nearby Crazy Cop Enabled");
             for (; ; )
             {
                 (float min, float max) = ThresholdUtils.Evaluate(ThresholdMappings.NearbyCrazThres, TimeManager.Instance.ElapsedDays);
@@ -498,7 +624,7 @@ namespace NACopsV1_IL2Cpp
 
         private IEnumerator PrivateInvestigator()
         {
-            MelonLogger.Msg("Private Investigator Enabled");
+            //MelonLogger.Msg("Private Investigator Enabled");
             float maxTime = 180f;
 
             Il2CppScheduleOne.NPCs.Behaviour.Behaviour cacheBeh = null;
@@ -700,7 +826,7 @@ namespace NACopsV1_IL2Cpp
 
         private IEnumerator CrazyCops()
         {
-            MelonLogger.Msg("Crazy Cops Enabled");
+            //MelonLogger.Msg("Crazy Cops Enabled");
 
             for (; ; )
             {
@@ -742,7 +868,7 @@ namespace NACopsV1_IL2Cpp
                         }
                     }
 
-                    if (nearestOfficer != null && closestDistance < UnityEngine.Random.Range(10f, 30f))
+                    if (nearestOfficer != null && closestDistance < UnityEngine.Random.Range(20f, 50f))
                     {
                         // Vehicle patrols we need diff behaviour
                         if (nearestOfficer.behaviour.activeBehaviour && nearestOfficer.behaviour.activeBehaviour is VehiclePatrolBehaviour)
@@ -763,7 +889,6 @@ namespace NACopsV1_IL2Cpp
                             {
                                 nearestOfficer.BeginFootPursuit_Networked(randomPlayer.NetworkObject, true);
                                 MelonCoroutines.Start(GiveFalseCharges(severity: 3, player: randomPlayer));
-
                             }
                         }
                         else
@@ -786,6 +911,19 @@ namespace NACopsV1_IL2Cpp
         {
             float distToStation = Vector3.Distance(PoliceStation.GetClosestPoliceStation(pos).transform.position, pos);
             return distToStation < 20f;
+        }
+        public static void SetPoliceNPC()
+        {
+            PrefabObjects spawnablePrefabs = netManager.SpawnablePrefabs;
+            for (int i = 0; i < spawnablePrefabs.GetObjectCount(); i++)
+            {
+                NetworkObject prefab = spawnablePrefabs.GetObject(true, i);
+                if (prefab?.gameObject?.name == "PoliceNPC")
+                {
+                    policeBase = prefab;
+                    break;
+                }
+            }
         }
         private IEnumerator SetOfficers()
         {
@@ -963,38 +1101,42 @@ namespace NACopsV1_IL2Cpp
                 new(20,  15f, 40f),
                 new(30,  10f, 30f),
                 new(40,  10f, 20f),
-                new(50,  8f, 20f),
+                new(50,  8f, 18f),
             };
             // Networth - min distance max distance rand range
             public static readonly List<MinMaxThreshold> LethalCopRange = new()
             {
                 new(0,      4f, 6f),
                 new(8000,   4f, 8f),
-                new(30000,  4f, 8f),
-                new(100000, 4f, 10f),
+                new(30000,  5f, 9f),
+                new(100000, 6f, 10f),
+                new(300000, 7f, 12f),
+                new(600000, 9f, 14f),
+                new(1000000, 10f, 15f),
+
             };
 
             // Days total
             public static readonly List<MinMaxThreshold> CrazyCopsFreq = new()
             {
-                new(0,   400f, 800f),
-                new(5,   350f, 700f),
-                new(10,  300f, 600f),
-                new(20,  200f, 600f),
-                new(30,  200f, 500f),
-                new(40,  150f, 450f),
-                new(50,  150f, 400f),
+                new(0,   300f, 450f),
+                new(5,   300f, 400f),
+                new(10,  200f, 350f),
+                new(20,  150f, 350f),
+                new(30,  150f, 300f),
+                new(40,  100f, 300f),
+                new(50,  100f, 250f),
             };
 
             // Days total
             public static readonly List<MinMaxThreshold> NearbyCrazThres = new()
             {
-                new(0,   600f, 960f),
-                new(5,   400f, 960f),
-                new(10,  120f, 600f),
-                new(20,  120f, 600f),
-                new(30,  120f, 500f),
-                new(40,  120f, 450f),
+                new(0,   400f, 650f),
+                new(5,   300f, 600f),
+                new(10,  120f, 500f),
+                new(20,  120f, 500f),
+                new(30,  120f, 400f),
+                new(40,  120f, 350f),
                 new(50,  120f, 300f),
             };
             // Networth - min distance max distance rand range
@@ -1004,6 +1146,9 @@ namespace NACopsV1_IL2Cpp
                 new(8000,   10f, 20f),
                 new(30000,  10f, 25f),
                 new(100000, 20f, 35f),
+                new(300000, 20f, 40f),
+                new(500000, 25f, 40f),
+
             };
 
             // Networth
@@ -1014,8 +1159,8 @@ namespace NACopsV1_IL2Cpp
                 new(10000,   150f, 400f),
                 new(30000,   150f, 300f),
                 new(60000,   100f, 300f),
-                new(100000,  90f, 300f),
-                new(300000,  90f, 200f),
+                new(100000,  100f, 300f),
+                new(300000,  100f, 200f),
             };
             // Days total - probability range of toggling attn ( result > 0.5 = true )
             public static readonly List<MinMaxThreshold> PICurfewAttn = new()
@@ -1038,6 +1183,17 @@ namespace NACopsV1_IL2Cpp
                 new(30,  0.1f, 1f),
                 new(40,  0.2f, 1f),
                 new(50,  0.3f, 1f),
+            };
+            // Customer relation delta*10 (0-50) - probability range of being a drug bust ( result > 0.5 = true )
+            public static readonly List<MinMaxThreshold> BuyBustProbability = new()
+            {
+                new(0,   0.1f, 1f),
+                new(5,   0.05f, 0.9f),
+                new(10,  0f, 0.8f),
+                new(15,  0f, 0.75f),
+                new(20,  0f, 0.65f),
+                new(30,  0f, 0.6f),
+                new(40,  0f, 0.55f),
             };
         }
 

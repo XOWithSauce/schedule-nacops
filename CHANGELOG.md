@@ -1,3 +1,13 @@
+# Version v1.7.1
+- Added a new Config value Include Spawned
+- Added a new coroutine to refresh currently active officers and conditionally apply the mod preferred settings (override settings)
+- Changed every coroutine and patch that used to reference the officers static array to use a new point-in-time copy of either recently refreshed officers on scene or officers evaluated at scene start.
+- Tied the Crazy Cops coroutine range to game progression total earnings -> More earnings larger evaluation range
+- Wrapped the Investigation + Car Dispatch logic into its own coroutine and added safety checks to prevent dispatching from Police Station with 0 occupants
+- Fixed IL2Cpp version JSON config loading, now using correct Newtonsoft assembly and reverted back to previous config loading logic.
+- Added safety checks to prevent game objects or PoliceOfficer variables being null in evaluations
+- Removed safety check in Private investigator where the officer is forced to exit vehicle -> condition will never be met since active behaviour and assigned vehicle are caught earlier
+
 # Version v1.7.0
 - Added Customer Buy Busts -> When dealing based on customer relation rolls a chance to spawn a cop behind you that attempts to apprehend you with taser
 - Adjusted the game progression based thresholds and frequencies for Crazy cops and Nearby crazy cops to be harder

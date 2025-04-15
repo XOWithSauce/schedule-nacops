@@ -154,7 +154,6 @@ namespace NACopsV1_IL2Cpp
                 currentSummoned.Clear();
                 currentPIs.Clear();
                 currentDrugApprehender.Clear();
-
             }
         }
         private void OnLoadCompleteCb()
@@ -289,10 +288,7 @@ namespace NACopsV1_IL2Cpp
                     }
                 }
             }
-            else
-            {
-                yield return null;
-            }
+            yield return null;
         }
 
         private static IEnumerator ApprehenderOfficerClear(PoliceOfficer offc)
@@ -980,6 +976,7 @@ namespace NACopsV1_IL2Cpp
             //MelonLogger.Msg("Officer properties complete");
             yield return null;
         }
+
         private AvatarSettings DeepCopyAvatarSettings(AvatarSettings original)
         {
             AvatarSettings copy = new AvatarSettings();
@@ -1054,7 +1051,7 @@ namespace NACopsV1_IL2Cpp
         public static IEnumerator LateInvestigation(Player player)
         {
             yield return new WaitForSeconds(1f);
-            if (!Singleton<LawManager>.InstanceExists || PoliceStation.PoliceStations.Count == 0 || !registered) yield break;
+            if (!registered || !Singleton<LawManager>.InstanceExists || PoliceStation.PoliceStations.Count == 0) yield break;
             PoliceStation station = PoliceStation.GetClosestPoliceStation(player.transform.position);
             if (station.OccupantCount < 2) yield break;
             try
@@ -1225,5 +1222,7 @@ namespace NACopsV1_IL2Cpp
         }
 
         #endregion
+
+
     }
 }

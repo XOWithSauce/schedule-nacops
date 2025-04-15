@@ -830,14 +830,8 @@ namespace NACopsV1_IL2Cpp
                 {
                     yield return new WaitForSeconds(0.01f);
 
-                    if (officer.behaviour.activeBehaviour && officer.behaviour.activeBehaviour is VehiclePursuitBehaviour)
-                        continue;
-
-                    if (officer.AssignedVehicle != null)
-                        continue;
-
                     float distance = Vector3.Distance(officer.transform.position, playerPosition);
-                    if (distance < closestDistance && !currentPIs.Contains(officer) && !currentDrugApprehender.Contains(officer) && !IsStationNearby(playerPosition) && !officer.IsInVehicle && !officer.isInBuilding)
+                    if (distance < closestDistance && !currentPIs.Contains(officer) && !currentDrugApprehender.Contains(officer) && !IsStationNearby(playerPosition) && !officer.isInBuilding)
                     {
                         closestDistance = distance;
                         nearestOfficer = officer;

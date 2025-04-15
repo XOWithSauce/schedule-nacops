@@ -63,7 +63,7 @@ namespace NACopsV1_IL2Cpp
         public bool CorruptCops = true;
         public bool SnitchingSamples = true;
         public bool BuyBusts = true;
-        public bool IncludeSpawned = true;
+        public bool IncludeSpawned = false;
     }
 
     public static class ConfigLoader

@@ -11,7 +11,10 @@
 - Cops will give you more crime charges if arrested
 - New customers will try to snitch on you resulting in Car Dispatches and Investigation
 - When dealing to customers, they have a chance to be a part of a Buy Bust!
-- Overall Cops difficulty is now tied to Game Progression ( Total Earnings and Total Days )
+- Overall Cops difficulty is tied to Game Progression:
+	- Total Earnings
+   	- Total Days in the Save
+   	- Customer Relationships
 
 ## Important!
 

@@ -9,9 +9,9 @@
 - Cops will occasionally appoint a disguised Private Investigator to monitor you
 - Cops will now try to search for players smoking ganja and also apprehend the suspect
 - Cops will give you more crime charges if arrested
-- New customers will try to snitch on you resulting in cop events
+- New customers will try to snitch on you resulting in Car Dispatches and Investigation
 - When dealing to customers, they have a chance to be a part of a Buy Bust!
-- Overall Cops difficulty is now tied to Game Progression
+- Overall Cops difficulty is now tied to Game Progression ( Total Earnings and Total Days )
 
 ## Important!
 
@@ -47,7 +47,8 @@ The mod supports overriding behaviors and variables to allow cross-compatibility
   "WeedInvestigator": true,
   "CorruptCops": true,
   "SnitchingSamples": true,
-  "BuyBusts": true
+  "BuyBusts": true,
+  "IncludeSpawned": false
 }
 ```
 - Override(Parameter):
@@ -85,6 +86,10 @@ The mod supports overriding behaviors and variables to allow cross-compatibility
 - BuyBusts:
 	- true: When you deal customers product, based on the customer relationship this might trigger a Buy Bust, spawning a Cop behind you!
 	- false: Disabled
+
+ - IncludeSpawned:
+	- true: When the mod is running, tries to search for spawned / despawned cops. Only enable this feature if you use mods that spawn or despawn cops at runtime!
+   	- false: Default Disabled.
 
 
 

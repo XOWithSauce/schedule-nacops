@@ -9,7 +9,8 @@
 - Removed safety check in Private investigator where the officer is forced to exit vehicle -> condition will never be met since active behaviour and assigned vehicle are caught earlier
 - Removed safety check in Crazy cops that would not take into evaluation cops with Vehicle behaviour -> Was previously needed but is now correctly handled by the function so removed.
 - Added fast sleeps into the SetOfficers function to make it less laggy
-  
+- Fixex a bug in the DrugConsumed coro where the function would keep executing even if no officers nearby were picked for apprehending
+
 # Version v1.7.0
 - Added Customer Buy Busts -> When dealing based on customer relation rolls a chance to spawn a cop behind you that attempts to apprehend you with taser
 - Adjusted the game progression based thresholds and frequencies for Crazy cops and Nearby crazy cops to be harder

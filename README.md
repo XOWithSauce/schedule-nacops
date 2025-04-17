@@ -11,6 +11,7 @@
 - Cops will give you more crime charges if arrested
 - New customers will try to snitch on you resulting in Car Dispatches and Investigation
 - When dealing to customers, they have a chance to be a part of a Buy Bust!
+- Police will on rare occasions destroy Growing Pots in the Docks Warehouse!
 - Overall Cops difficulty is tied to Game Progression:
 	- Total Earnings
    	- Total Days in the Save
@@ -51,6 +52,7 @@ The mod supports overriding behaviors and variables to allow cross-compatibility
   "CorruptCops": true,
   "SnitchingSamples": true,
   "BuyBusts": true,
+  "DocksRaids": true,
   "IncludeSpawned": false
 }
 ```
@@ -88,6 +90,10 @@ The mod supports overriding behaviors and variables to allow cross-compatibility
 
 - BuyBusts:
 	- true: When you deal customers product, based on the customer relationship this might trigger a Buy Bust, spawning a Cop behind you!
+	- false: Disabled
+
+- DocksRaids:
+	- true: If Private Investigator builds up enough Session Heat, the Police will come to destroy Growing Pots in the Docks Warehouse
 	- false: Disabled
 
  - IncludeSpawned:

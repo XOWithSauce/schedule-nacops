@@ -1,3 +1,18 @@
+# Version v1.7.2
+- Modified WeedInvestigator function to account for the police officer vision -> Consuming in their vision will trigger bodysearch
+- Private Investigator now stores FootPatrolBehaviour groups and re-assigns them after state ends
+- Fixed Private Investigator Vision during curfew. Now disables Vision Cone totally (or enables it if rolls random chance)
+- Added a new Config value DocksRaids
+- Modified the Private Investigator to add Session Heat when the investigator sees player enter the Docks Warehouse and reduce Session Heat when the investigation ends.
+- Session Heat is cleared to 0 every time save is exited.
+- Added a new event that triggers a Raid in the Docks Warehouse (Triggered by Heat reaching 20 and player being in the warehouse and also having dispatch officers available)
+  - First the screen will show a red warning
+  - Police car is dispatched to the Warehouse
+  - Cinematic view of the police arriving will play and the event begins
+  - During the Event:
+    - 2 Cops will spawn in the warehouse next to Pots and the officers will begin destroying them.
+    - You must kill the cops to stop them from doing this (or if they reach max pots destroyed limit)
+
 # Version v1.7.1
 - Added a new Config value Include Spawned
 - Added a new coroutine to refresh currently active officers and conditionally apply the mod preferred settings (override settings)

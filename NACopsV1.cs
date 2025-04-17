@@ -1,33 +1,39 @@
-using MelonLoader;
 using System.Collections;
 using System.Reflection;
+using FishNet.Managing;
+using FishNet.Managing.Object;
+using FishNet.Object;
+using HarmonyLib;
+using MelonLoader;
+using MelonLoader.Utils;
+using ScheduleOne.AvatarFramework;
+using ScheduleOne.AvatarFramework.Equipping;
+using ScheduleOne.DevUtilities;
+using ScheduleOne.Economy;
+using ScheduleOne.EntityFramework;
+using ScheduleOne.GameTime;
+using ScheduleOne.ItemFramework;
+using ScheduleOne.Law;
+using ScheduleOne.Management;
+using ScheduleOne.Map;
+using ScheduleOne.Money;
+using ScheduleOne.NPCs;
+using ScheduleOne.NPCs.Behaviour;
+using ScheduleOne.ObjectScripts;
+using ScheduleOne.Persistence;
 using ScheduleOne.PlayerScripts;
 using ScheduleOne.Police;
-using UnityEngine;
-using ScheduleOne.NPCs.Behaviour;
-using ScheduleOne.GameTime;
-using ScheduleOne.AvatarFramework.Equipping;
-using HarmonyLib;
 using ScheduleOne.Product;
-using ScheduleOne.VoiceOver;
-using ScheduleOne.Money;
-using ScheduleOne.Law;
-using ScheduleOne.AvatarFramework;
-using static ScheduleOne.AvatarFramework.AvatarSettings;
-using ScheduleOne.Persistence;
-using ScheduleOne.Map;
-using FishNet;
-using ScheduleOne.DevUtilities;
-using MelonLoader.Utils;
-using ScheduleOne.Economy;
-using FishNet.Managing;
-using FishNet.Object;
-using ScheduleOne.ItemFramework;
-using ScheduleOne.NPCs;
-using ScheduleOne.UI.Handover;
+using ScheduleOne.Property;
 using ScheduleOne.Quests;
+using ScheduleOne.UI;
+using ScheduleOne.UI.Handover;
+using ScheduleOne.Vehicles;
+using ScheduleOne.VoiceOver;
+using UnityEngine;
 using UnityEngine.AI;
-using FishNet.Managing.Object;
+using TMPro;
+using static ScheduleOne.AvatarFramework.AvatarSettings;
 
 [assembly: MelonInfo(typeof(NACopsV1.NACops), NACopsV1.BuildInfo.Name, NACopsV1.BuildInfo.Version, NACopsV1.BuildInfo.Author, NACopsV1.BuildInfo.DownloadLink)]
 [assembly: MelonColor()]
@@ -42,7 +48,7 @@ namespace NACopsV1
         public const string Description = "Crazyyyy cops";
         public const string Author = "XOWithSauce";
         public const string Company = null;
-        public const string Version = "1.7.1";
+        public const string Version = "1.7.2";
         public const string DownloadLink = null;
     }
 
@@ -62,6 +68,7 @@ namespace NACopsV1
         public bool CorruptCops = true;
         public bool SnitchingSamples = true;
         public bool BuyBusts = true;
+        public bool DocksRaids = true;
         public bool IncludeSpawned = false;
     }
 
@@ -120,7 +127,9 @@ namespace NACopsV1
         public static ModConfig currentConfig;
         public static NetworkManager netManager;
         public static NetworkObject policeBase = new();
-
+        public static HashSet<Pot> toBeDestroyed = new();
+        public static int sessionPropertyHeat = 0;
+        public static bool raidedDuringSession = false;
 
         #region Unity
         public override void OnSceneWasInitialized(int buildIndex, string sceneName)
@@ -150,15 +159,20 @@ namespace NACopsV1
                 currentSummoned.Clear();
                 currentPIs.Clear();
                 currentDrugApprehender.Clear();
+                toBeDestroyed.Clear();
+                raidedDuringSession = false;
+                sessionPropertyHeat = 0;
             }
         }
+
+
 
         private void OnLoadCompleteCb()
         {
             //MelonLogger.Msg("Start State");
             if (registered) return;
             currentConfig = ConfigLoader.Load();
-            MelonLogger.Msg(currentConfig.LethalCops);
+            //MelonLogger.Msg(currentConfig.LethalCops);
             // Officers original populate and start coro
             lock (_officerLock)
             {
@@ -184,10 +198,322 @@ namespace NACopsV1
                 coros.Add(MelonCoroutines.Start(this.NearbyLethalCop()));
             if (currentConfig.PrivateInvestigator)
                 coros.Add(MelonCoroutines.Start(this.PrivateInvestigator()));
+            if (currentConfig.DocksRaids)
+                coros.Add(MelonCoroutines.Start(this.RaidEvaluator()));
 
             registered = true;
         }
         #endregion
+
+
+        #region Raid Demo
+
+        private IEnumerator RaidEvaluator()
+        {
+            yield return new WaitForSeconds(20f);
+            for (; ; )
+            {
+                yield return new WaitForSeconds(180f);
+                if (!registered || raidedDuringSession) yield break;
+                Player player = UnityEngine.Object.FindObjectsOfType<Player>(true).FirstOrDefault();
+                if (player.CurrentProperty != null)
+                    if (player.CurrentProperty.PropertyName != "Docks Warehouse")
+                        continue;
+
+                if (sessionPropertyHeat > 20 && UnityEngine.Random.Range(0f, 1f) > 0.7f)
+                {
+                    raidedDuringSession = true;
+                    coros.Add(MelonCoroutines.Start(RaidRunner(player)));
+                }
+            }
+        }
+
+        public static IEnumerator RaidRunner(Player player)
+        {
+            PoliceStation station = PoliceStation.GetClosestPoliceStation(player.transform.position);
+            //MelonLogger.Msg("Station Vehs: " + station.deployedVehicles.Count);
+            //MelonLogger.Msg("Station Occp: " + station.OccupantCount);
+
+            // Show in UI
+            HUD hud = UnityEngine.Object.FindObjectOfType<HUD>();
+            GameObject textObj = new GameObject("CrimeStatusText");
+            textObj.transform.SetParent(hud.canvas.transform, false);
+            textObj.transform.SetAsLastSibling();
+            TextMeshProUGUI textComponent = textObj.AddComponent<TextMeshProUGUI>();
+            textComponent.text = "The cops are preparing to raid Docks Warehouse!";
+            textComponent.fontSize = 24;
+            textComponent.color = Color.red;
+            RectTransform rectTransform = textObj.GetComponent<RectTransform>();
+            rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
+            rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+            rectTransform.anchoredPosition = Vector2.zero;
+            rectTransform.sizeDelta = new Vector2(600, 200);
+            yield return new WaitForSeconds(6f);
+            UnityEngine.Object.Destroy(textObj);
+
+            while (station.OccupantCount < 2)
+            {
+                yield return new WaitForSeconds(5f);
+                if (!registered) yield break;
+                //MelonLogger.Msg("Waiting occupants");
+            }
+            LandVehicle[] origVehs = UnityEngine.Object.FindObjectsOfType<LandVehicle>();
+            Singleton<LawManager>.Instance.PoliceCalled(player, new DrugTrafficking());
+            player.CrimeData.SetPursuitLevel(PlayerCrimeData.EPursuitLevel.Investigating);
+            yield return new WaitForSeconds(0.3f);
+
+            LandVehicle chosen = null;
+            while (chosen == null)
+            {
+                yield return new WaitForSeconds(1f);
+                if (!registered) yield break;
+                //MelonLogger.Msg("Waiting new vehicle");
+                LandVehicle[] newVehs = UnityEngine.Object.FindObjectsOfType<LandVehicle>();
+                foreach (LandVehicle v in newVehs)
+                {
+                    yield return new WaitForSeconds(0.1f);
+                    if (!origVehs.Contains(v))
+                    {
+                        //MelonLogger.Msg("chosen");
+                        bool containsOffc = false;
+                        foreach (NPC npc in v.OccupantNPCs)
+                        {
+                            if (npc.name.ToLower().Contains("officer"))
+                            {
+                                containsOffc = true;
+                                chosen = v;
+                                break;
+                            }
+                        }
+                        if (containsOffc)
+                            break;
+                    }
+                }
+            }
+            yield return new WaitForSeconds(2f);
+            if (!registered) yield break;
+            //MelonLogger.Msg("Cinema");
+            float gOrig = PlayerMovement.GravityMultiplier;
+            Quaternion rot = Quaternion.identity;
+            if (chosen != null)
+            {
+                // Wait to be rendered active
+                while (Vector3.Distance(chosen.transform.position, player.transform.position) > 60f)
+                {
+                    yield return new WaitForSeconds(0.3f);
+                }
+                rot = player.transform.rotation;
+                player.SetGravityMultiplier(0f);
+                PlayerSingleton<PlayerMovement>.Instance.Controller.enabled = false;
+                //MelonLogger.Msg("Camera dispatch");
+                float durationPerSegment = 3f;
+                float elapsed = 0f;
+                while (elapsed < durationPerSegment)
+                {
+                    // Skyview
+                    yield return new WaitForEndOfFrame();
+                    if (!registered) yield break;
+                    elapsed += Time.deltaTime;
+                    player.transform.position = new Vector3(chosen.transform.position.x, chosen.transform.position.y + 40f, chosen.transform.position.z);
+                    player.transform.LookAt(chosen.transform.position + chosen.transform.forward * 6f);
+                }
+                yield return new WaitForSeconds(0.01f);
+                durationPerSegment = 5f;
+                elapsed = 0f;
+                while (elapsed < durationPerSegment)
+                {
+                    // Rear car
+                    yield return new WaitForEndOfFrame();
+                    if (!registered) yield break;
+                    elapsed += Time.deltaTime;
+                    player.transform.position = new Vector3(chosen.transform.position.x, chosen.transform.position.y + 5f, chosen.transform.position.z) - chosen.transform.forward * 6f;
+                    player.transform.LookAt(chosen.transform.position + chosen.transform.forward * 9f);
+                }
+
+            }
+            else
+            {
+                //MelonLogger.Msg("Chosen is null");
+            }
+            // End Cinema
+            yield return new WaitForSeconds(0.1f);
+            player.SetGravityMultiplier(gOrig);
+            PlayerSingleton<PlayerMovement>.Instance.Controller.enabled = true;
+            var field = typeof(Player).GetField("ragdollForceComponents", BindingFlags.NonPublic | BindingFlags.Instance);
+            var ragdollForces = field.GetValue(player) as List<ConstantForce>;
+
+            foreach (var cf in ragdollForces)
+            {
+                cf.force = Vector3.zero;
+            }
+            //MelonLogger.Msg("Parse Property");
+            Pot[] pots = null;
+            Property property = null;
+            if (player.CurrentProperty != null)
+            {
+                pots = player.CurrentProperty.transform.GetComponentsInChildren<Pot>();
+                property = player.CurrentProperty;
+            }
+            else if (pots == null && player.LastVisitedProperty != null)
+            {
+                pots = player.LastVisitedProperty.transform.GetComponentsInChildren<Pot>();
+                property = player.LastVisitedProperty;
+            }
+            player.transform.rotation = rot;
+            Vector3 pos = property.SpawnPoint.position;
+            PlayerSingleton<PlayerMovement>.Instance.Teleport(new(pos.x, pos.y + 1f, pos.z));
+            int maxSummoned = 2;
+            for (int i = 0; i < maxSummoned; i++)
+            {
+                PoliceOfficer offc = CreateNew();
+                yield return new WaitForSeconds(0.5f);
+                if (pots != null)
+                {
+                    //MelonLogger.Msg("Pots in property");
+                    yield return new WaitForSeconds(2f);
+                    if (!registered) yield break;
+                    coros.Add(MelonCoroutines.Start(DestroyPots(offc, property, 2f)));
+                }
+            }
+
+            yield return null;
+        }
+
+        public static PoliceOfficer CreateNew()
+        {
+            // Create NPC to destroy / pickup stuff from shelves
+            NetworkObject copNet = UnityEngine.Object.Instantiate<NetworkObject>(policeBase);
+            NPC myNpc = copNet.gameObject.GetComponent<NPC>();
+            NavMeshAgent nav = copNet.GetComponent<UnityEngine.AI.NavMeshAgent>();
+            if (nav != null && nav.enabled == true) nav.Stop();
+            myNpc.ID = $"NACop_{Guid.NewGuid()}";
+            myNpc.FirstName = $"NACop";
+            myNpc.LastName = "";
+            myNpc.transform.parent = NPCManager.Instance.NPCContainer;
+            NPCManager.NPCRegistry.Add(myNpc);
+
+            netManager.ServerManager.Spawn(copNet);
+            copNet.gameObject.SetActive(true);
+            NavMeshAgent nma = myNpc.GetComponent<UnityEngine.AI.NavMeshAgent>();
+            if (nma != null)
+            {
+                UnityEngine.Object.Destroy(nma);
+            }
+            myNpc.Health.MaxHealth = 300f;
+            myNpc.Health.Revive();
+            PoliceOfficer offc = copNet.gameObject.GetComponent<PoliceOfficer>();
+            currentSummoned.Add(offc);
+            return offc;
+        }
+
+        public static IEnumerator DestroyPots(PoliceOfficer offc, Property property, float durationPerSegment)
+        {
+            Pot[] pots = property.transform.GetComponentsInChildren<Pot>();
+            int maxLen = pots.Length;
+
+            Pot pot = null;
+            do
+            {
+                pot = pots[UnityEngine.Random.Range(0, maxLen)];
+            }
+            while (toBeDestroyed.Contains(pot));
+            toBeDestroyed.Add(pot);
+            Vector3 spawnPos = pot.accessPoints.FirstOrDefault().position;
+            offc.transform.position = spawnPos;
+            yield return new WaitForSeconds(0.3f);
+            int maxDestroyed = 6;
+            // Traverse Pots
+            for (int i = 0; i < maxLen; i++)
+            {
+                if (i == maxDestroyed) break;
+
+                float elapsed = 0f;
+                Vector3 fixedDest = Vector3.zero;
+                while (elapsed < durationPerSegment)
+                {
+                    yield return new WaitForEndOfFrame();
+                    if (!registered || offc.Health.IsKnockedOut || offc.Health.IsDead || !offc.IsConscious) break;
+
+                    fixedDest = pot.accessPoints.FirstOrDefault().position;
+                    float baseDist = Vector3.Distance(offc.transform.position, fixedDest);
+                    foreach (Transform ap in pot.AccessPoints)
+                    {
+                        float dist = Vector3.Distance(offc.transform.position, ap.position);
+                        if (dist < baseDist)
+                        {
+                            baseDist = dist;
+                            fixedDest = ap.position;
+                        }
+                    }
+
+                    elapsed += Time.deltaTime;
+                    float t = Mathf.Clamp01(elapsed / durationPerSegment);
+                    offc.transform.position = Vector3.Lerp(spawnPos, fixedDest, t);
+                    Vector3 direction = pot.transform.position - offc.transform.position;
+                    direction.y = 0;
+                    offc.transform.rotation = Quaternion.LookRotation(direction);
+                }
+
+                elapsed = 0f;
+                while (elapsed < durationPerSegment / 2f)
+                {
+                    yield return new WaitForEndOfFrame();
+                    if (!registered || offc.Health.IsKnockedOut || offc.Health.IsDead || !offc.IsConscious) break;
+
+                    elapsed += Time.deltaTime;
+                    float t = Mathf.Clamp01(elapsed / durationPerSegment);
+                    offc.transform.position = Vector3.Lerp(fixedDest, pot.transform.position, t);
+                    Vector3 direction = pot.transform.position - offc.transform.position;
+                    direction.y = 0;
+                    offc.transform.rotation = Quaternion.LookRotation(direction);
+                }
+                yield return new WaitForSeconds(2f);
+                if (!registered || offc.Health.IsKnockedOut || offc.Health.IsDead || !offc.IsConscious) break;
+                offc.Avatar.Anim.SetCrouched(true);
+
+                if (pot.Configuration is PotConfiguration cnf)
+                {
+                    if (cnf.AssignedBotanist != null)
+                        cnf.AssignedBotanist.SetNPC(null, false);
+                }
+                yield return new WaitForSeconds(2f);
+                if (!registered || offc.Health.IsKnockedOut || offc.Health.IsDead || !offc.IsConscious) break;
+                if (pot.TryGetComponent<BuildableItem>(out BuildableItem bi))
+                    bi.DestroyItem();
+                toBeDestroyed.Remove(pot);
+
+                //MelonLogger.Msg("Object permanently destroyed.");
+                yield return new WaitForSeconds(2f);
+                if (!registered || offc.Health.IsKnockedOut || offc.Health.IsDead || !offc.IsConscious) break;
+                offc.Avatar.Anim.SetCrouched(false);
+
+                pots = property.transform.GetComponentsInChildren<Pot>();
+                float minDistance = 5f;
+                if (pots.Length < 2) break;
+                pot = null;
+                foreach (Pot poti in pots)
+                {
+                    float dist = Vector3.Distance(offc.transform.position, poti.transform.position);
+                    if (dist < minDistance)
+                    {
+                        minDistance = dist;
+                        pot = poti;
+                    }
+                }
+                if (pot == null) break;
+                toBeDestroyed.Add(pot);
+                spawnPos = offc.transform.position;
+            }
+            yield return new WaitForSeconds(2f);
+            if (!registered) yield break;
+            if (offc is NPC npc)
+                NPCManager.NPCRegistry.Remove(npc);
+            GameObject.Destroy(offc.gameObject);
+            yield return null;
+        }
+
+        #endregion
+
 
         #region Harmony Consume Product Player
         [HarmonyPatch(typeof(Player), "ConsumeProduct")]
@@ -209,31 +535,43 @@ namespace NACopsV1
             {
                 //MelonLogger.Msg("Productinstance is weed");
                 yield return new WaitForSeconds(2f);
-                if (!registered) yield break;
+                if (!registered || currentDrugApprehender.Count > 1) yield break;
 
                 PoliceOfficer[] officersSnapshot;
                 lock (_officerLock)
                 {
-                    MelonLogger.Msg("Drug Consumed Lock");
+                    //MelonLogger.Msg("Drug Consumed Lock");
                     officersSnapshot = allActiveOfficers.Where(o => o != null && o.gameObject != null).ToArray();
                 }
 
                 PoliceOfficer noticeOfficer = null;
                 float smallestDistance = 20f;
+                bool direct = false;
                 //MelonLogger.Msg("Total Officers: " + officers.Length);
                 for (int i = 0; i < officersSnapshot.Length; i++)
                 {
                     PoliceOfficer offc = officersSnapshot[i];
-                    //MelonLogger.Msg("ParseCandidate");
-                    float distance = Vector3.Distance(offc.transform.position, player.transform.position);
-                    if (distance < 20f && distance < smallestDistance && offc.Movement.CanMove() && !offc.IsInVehicle && !currentPIs.Contains(offc) && !currentDrugApprehender.Contains(offc) && currentDrugApprehender.Count < 1)
+                    if (currentDrugApprehender.Contains(offc) || currentPIs.Contains(offc)) continue;
+                    if (offc.awareness.VisionCone.IsPlayerVisible(player))
                     {
-                        smallestDistance = distance;
-                        noticeOfficer = offc;
+                        offc.BeginBodySearch_Networked(player.NetworkObject);
+                        MelonCoroutines.Start(GiveFalseCharges(severity: 3, player));
+                        direct = true;
+                        break;
+                    }
+                    else
+                    {
+                        //MelonLogger.Msg("ParseCandidate");
+                        float distance = Vector3.Distance(offc.transform.position, player.transform.position);
+                        if (distance < 20f && distance < smallestDistance && offc.Movement.CanMove() && !offc.IsInVehicle && !offc.isInBuilding)
+                        {
+                            smallestDistance = distance;
+                            noticeOfficer = offc;
+                        }
                     }
                 }
 
-                if (noticeOfficer == null) yield break;
+                if (noticeOfficer == null || direct) yield break;
 
                 currentDrugApprehender.Add(noticeOfficer);
 
@@ -243,6 +581,8 @@ namespace NACopsV1
                 MelonCoroutines.Start(ApprehenderOfficerClear(noticeOfficer));
 
                 bool apprehending = false;
+                noticeOfficer.Movement.FacePoint(player.transform.position, lerpTime: 0.2f);
+                yield return new WaitForSeconds(0.2f);
                 if (noticeOfficer.awareness.VisionCone.IsPointWithinSight(player.transform.position))
                 {
                     //MelonLogger.Msg("Point within immediate sight apprehend drug user");
@@ -295,6 +635,7 @@ namespace NACopsV1
             if (currentDrugApprehender.Contains(offc))
                 currentDrugApprehender.Remove(offc);
         }
+
         #endregion
 
         #region Harmony Snitch Samples
@@ -509,7 +850,7 @@ namespace NACopsV1
                 PoliceOfficer[] officersSnapshot;
                 lock (_officerLock)
                 {
-                    MelonLogger.Msg("Nearby Crazy Cop Lock");
+                    //MelonLogger.Msg("Nearby Crazy Cop Lock");
                     officersSnapshot = allActiveOfficers.Where(o => o != null && o.gameObject != null).ToArray();
                 }
 
@@ -584,15 +925,15 @@ namespace NACopsV1
             }
 
         }
+
         private IEnumerator PrivateInvestigator()
         {
             //MelonLogger.Msg("Private Investigator Enabled");
             float maxTime = 180f;
 
             ScheduleOne.NPCs.Behaviour.Behaviour cacheBeh = null;
+            PatrolGroup cacheGroup = null;
             float cacheWalkSpeed = 0f;
-            float cacheAttentiveness = 0f;
-
 
             for (; ; )
             {
@@ -665,7 +1006,6 @@ namespace NACopsV1
                     randomOfficer.Movement.Warp(warpInit);
                 }
 
-                cacheAttentiveness = randomOfficer.awareness.VisionCone.Attentiveness;
 
                 cacheWalkSpeed = randomOfficer.Movement.WalkSpeed;
                 randomOfficer.Movement.WalkSpeed = 3f;
@@ -720,7 +1060,8 @@ namespace NACopsV1
                 for (; ; )
                 {
                     yield return new WaitForSeconds(5f);
-                    if (!registered || randomOfficer == null || randomOfficer.gameObject == null) yield break;
+                    if (!registered) yield break;
+                    if (randomOfficer == null || randomOfficer.gameObject == null) break;
                     elapsed += 5f;
 
                     float distance = Vector3.Distance(randomOfficer.transform.position, randomPlayer.transform.position);
@@ -731,15 +1072,15 @@ namespace NACopsV1
 
                     if (TimeManager.Instance.CurrentTime > 2100 || TimeManager.Instance.CurrentTime < 0500) // During curfew
                     {
-                        // Based on prog, roll random chance for attn
+                        if (randomOfficer.awareness.VisionCone.VisionEnabled)
+                            randomOfficer.awareness.VisionCone.VisionEnabled = false;
+                        // Based on prog, roll random chance for enable
                         (float minRang, float maxRang) = ThresholdUtils.Evaluate(ThresholdMappings.PICurfewAttn, TimeManager.Instance.ElapsedDays);
                         if (UnityEngine.Random.Range(minRang, maxRang) < 0.5f)
-                            randomOfficer.awareness.VisionCone.Attentiveness = 0f;
-                        else
-                            randomOfficer.awareness.VisionCone.Attentiveness = 1f;
+                            randomOfficer.awareness.VisionCone.VisionEnabled = true;
                     }
-                    else if (randomOfficer.awareness.VisionCone.Attentiveness != cacheAttentiveness || cacheAttentiveness != 0f)
-                        randomOfficer.awareness.VisionCone.Attentiveness = cacheAttentiveness;
+                    else if (!randomOfficer.awareness.VisionCone.VisionEnabled)
+                        randomOfficer.awareness.VisionCone.VisionEnabled = true;
 
                     randomOfficer.behaviour.activeBehaviour = null;
                     if (randomOfficer.Movement.CanGetTo(randomPlayer.transform.position, proximityReq: 100f) && distance >= 20f)
@@ -767,6 +1108,17 @@ namespace NACopsV1
                     }
                     else
                     {
+                        if (randomPlayer.CurrentProperty != null)
+                        {
+                            //MelonLogger.Msg("Increased docks heat");
+                            if (randomPlayer.CurrentProperty.PropertyName == "Docks Warehouse")
+                                sessionPropertyHeat += 8;
+                        }
+                        else
+                        {
+                            if (sessionPropertyHeat > 0)
+                                sessionPropertyHeat -= 1;
+                        }
                         //MelonLogger.Msg("PI Cant reach target");
                         break;
                     }
@@ -776,19 +1128,20 @@ namespace NACopsV1
                 if (randomOfficer.Movement.IsPaused)
                     randomOfficer.Movement.ResumeMovement();
                 randomOfficer.Movement.WalkSpeed = cacheWalkSpeed;
-                randomOfficer.awareness.VisionCone.Attentiveness = cacheAttentiveness;
                 randomOfficer.Avatar.ApplyBodyLayerSettings(orig);
                 randomOfficer.Avatar.ApplyAccessorySettings(orig);
                 if (cacheBeh != null)
                 {
                     randomOfficer.behaviour.activeBehaviour = cacheBeh;
-                    cacheBeh = null;
+                    if (cacheBeh is FootPatrolBehaviour patrolBeh)
+                        patrolBeh.SetGroup(cacheGroup);
+                    randomOfficer.behaviour.activeBehaviour = cacheBeh;
+                    randomOfficer.behaviour.activeBehaviour.SendEnable();
                 }
                 currentPIs.Remove(randomOfficer);
                 //MelonLogger.Msg("PI Reverted");
             }
         }
-
 
         private IEnumerator CrazyCops()
         {
@@ -817,7 +1170,7 @@ namespace NACopsV1
                 PoliceOfficer[] officersSnapshot;
                 lock (_officerLock)
                 {
-                    MelonLogger.Msg("Crazy Cop Lock");
+                    //MelonLogger.Msg("Crazy Cop Lock");
                     officersSnapshot = allActiveOfficers.Where(o => o != null && o.gameObject != null).ToArray();
                 }
                 foreach (PoliceOfficer officer in officersSnapshot)
@@ -862,6 +1215,7 @@ namespace NACopsV1
                 }
             }
         }
+
         #endregion
 
         #region Base Utils
@@ -1212,7 +1566,6 @@ namespace NACopsV1
         }
 
         #endregion
-
 
 
     }

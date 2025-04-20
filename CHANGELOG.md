@@ -13,6 +13,7 @@
 - Docks Raids now spawns armed cops in the building and attack the player if they misbehave
 - Enhanced the cinematic visuals in Docks Raids
 - Fixed Bugs with Docks Raids starting and also event run
+- Removed the 30% chance requirement to trigger Docks Raids
 - Divided BuyBust, PI and Raid cops Avatar settings to their own functions
 - Fixed miscellanious bugs that would set officer travel destinations to Vector3.zero
 

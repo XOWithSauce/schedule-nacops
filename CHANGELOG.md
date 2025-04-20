@@ -4,6 +4,7 @@
 - Fixed Private Investigator not adding Session Heat properly after the investigation concludes
 - Session Heat can now also be gained even if the player is not in the Docks Warehouse after the investigation concludes
 - Private Investigator spawns less often since now the spawning and following process is more consistent and reliable
+- Private Investigator eyes start glowing Yellow when halfway, Red when reaching close to triggering a Docks Raid -> Good indicator of Session Heat
 - Adjusted the Game Progression values and added new caps for Private investigator spawning threshold
 - Adjusted the Game Progression values and added new caps for Private investigator Curfew attention probability
 - Adjusted the Game Progression values and added new caps for New Customers Snitch Probability

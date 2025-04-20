@@ -1,3 +1,20 @@
+# Version v1.7.3
+- Reworked the Private Investigator system to spawn its own cop instead of randomly selecting existing -> Fixes a bunch of miscellanious bugs
+- Private investigator now tracks the times seen during investigation, times in proximity and times player spent in docks warehouse, evaluated every 5 sec
+- Fixed Private Investigator not adding Session Heat properly after the investigation concludes
+- Session Heat can now also be gained even if the player is not in the Docks Warehouse after the investigation concludes
+- Private Investigator spawns less often since now the spawning and following process is more consistent and reliable
+- Adjusted the Game Progression values and added new caps for Private investigator spawning threshold
+- Adjusted the Game Progression values and added new caps for Private investigator Curfew attention probability
+- Adjusted the Game Progression values and added new caps for New Customers Snitch Probability
+- Patched the Exit To Menu function to stop coroutines and clear the mod state to prevent errors when exiting the save.
+- Slightly decreased the threshold at which raids are evaluated
+- Docks Raids now spawns armed cops in the building and attack the player if they misbehave
+- Enhanced the cinematic visuals in Docks Raids
+- Fixed Bugs with Docks Raids starting and also event run
+- Divided BuyBust, PI and Raid cops Avatar settings to their own functions
+- Fixed miscellanious bugs that would set officer travel destinations to Vector3.zero
+
 # Version v1.7.2
 - Modified WeedInvestigator function to account for the police officer vision -> Consuming in their vision will trigger bodysearch
 - Private Investigator now stores FootPatrolBehaviour groups and re-assigns them after state ends

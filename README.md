@@ -32,7 +32,7 @@
 
 The mod supports overriding behaviors and variables to allow cross-compatibility with other mods.
 
-### (Optional) Configuration Steps:
+### (Optional) Mod Configuration Steps:
 
 1. Open the `NACops` folder and locate the file called `config.json`.
 2. The default contents of the `config.json` file are as follows:
@@ -57,7 +57,7 @@ The mod supports overriding behaviors and variables to allow cross-compatibility
 }
 ```
 - Override(Parameter):
-	- t﻿rue: Uses the NACops mod settings on the officers and overrides any other mod settings
+	- true: Uses the NACops mod settings on the officers and overrides any other mod settings
 	- false: Uses the game default settings on the officers or other mods settings.
 
 - LethalCops:
@@ -100,6 +100,31 @@ The mod supports overriding behaviors and variables to allow cross-compatibility
 	- true: When the mod is running, tries to search for spawned / despawned cops. Only enable this feature if you use mods that spawn or despawn cops at runtime!
    	- false: Default Disabled.
 
+### (Optional) Officer Configuration Steps:
+
+1. Open the `NACops` folder and locate the file called `officer.json`.
+2. The default contents of the `officer.json` file are as follows:
+
+```json
+{
+  "MovementRunSpeed": 9.0,
+  "MovementWalkSpeed": 2.4,
+  "CombatGiveUpRange": 40.0,
+  "CombatGiveUpTime": 60.0,
+  "CombatSearchTime": 60.0,
+  "CombatMoveSpeed": 9.0,
+  "CombatEndAfterHits": 40,
+  "OfficerMaxHealth": 175.0,
+  "WeaponMagSize": 20,
+  "WeaponFireRate": 0.1,
+  "WeaponMaxRange": 20.0,
+  "WeaponReloadTime": 0.5,
+  "WeaponRaiseTime": 0.2,
+  "WeaponHitChanceMax": 0.3,
+  "WeaponHitChanceMin": 0.8
+}
+```
 
 
-> **Note**: The `config.json` file will be automatically created in the `Mods/NACops/config.json` directory if it's missing.
+
+> **Note**: The `config.json` and `officer.json` files will be automatically created in the `Mods/NACops/` directory if it's missing.

@@ -1,3 +1,26 @@
+# Version v1.8.0
+- Increased smallest distance at which drug apprehender can be selected from nearby officers to search for player on foot.
+- Officers field-of-view is now checked after player drug consumption and if at 50 units distance. If player is in field-of-view they get immediate bodysearch. Old behaviour but added a cap of 50 units distance to prevent useless vision cone calls lagging the run.
+- Decreased the time drug apprehender needs to wait before starting to search for player to 4 seconds instead of time relative to distance
+- Drug apprehender function now evaluates officers at a slower pace to fix a bug where player encounters lag during this evaluation
+- Drug apprehender can now end foot search early if 5% chance is triggered during consecutive attempts after 6 seconds into search
+- Drug apprehender total time slightly increased to 22.5 seconds in max total search length
+- Changed drug apprehender foot search to have more consistent behaviour and attempts to traverse for full max length instead of breaking search if target location is unreachable.
+- Increased cooldown time for officers to become drug apprehenders again to 30 seconds. During cooldown officer wont respond to nearby drug consumption.
+- Body search behaviour has now randomized search speed each time between 8 and 20 seconds, and has 3% chance every frame to randomly toggle speed up during the search. This feature can be disabled by setting OverrideBodySearch to false.
+- Added defensive programming measures to prevent type cast errors from breaking a coroutine in WeedInvestigator feature in IL2Cpp version (no reprod bug)
+- Added full configuration support for the default values of NACops Officers via officer.json, this includes movement, combat, gun and health variables. See README.md or Description or wiki for info.
+
+- Fixed miscellanious class and variable namings to match the latest available patch
+- Fixed a null reference error that was caused by player dying and loading last save in singleplayer
+- Fixed a bug that caused duplicate OnLoadComplete callbacks after loading last save in singleplayer.
+- Fixed a bug that caused duplicate OnLoadComplete callbacks after quitting to main menu and reloading any save
+- Fixed a bug where quitting the game to main menu would cause coroutines to keep running
+- Removed a RemoveListener callback function from the save load completion due to being redundant after above fixes
+
+- known bugs:
+* While changing costumes of officers during Buy Bust, Private Investigator and Docks Raids, the original object for police officer (which is cloned for the events) retains the costume that was set for the clone. A Random officer in the world has a red cap or a PI costume, but they are NOT a Buy Bust Officer or a PI.
+
 # Version v1.7.3
 - Reworked the Private Investigator system to spawn its own cop instead of randomly selecting existing -> Fixes a bunch of miscellanious bugs
 - Private investigator now tracks the times seen during investigation, times in proximity and times player spent in docks warehouse, evaluated every 5 sec

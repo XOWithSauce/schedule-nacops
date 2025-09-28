@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.13.35919.96
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NACopsV1", "NACopsV1.csproj", "{28E9B94E-88BC-4790-984C-328DB92B2497}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		MONO|Any CPU = MONO|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{28E9B94E-88BC-4790-984C-328DB92B2497}.MONO|Any CPU.ActiveCfg = Release|Any CPU
+		{28E9B94E-88BC-4790-984C-328DB92B2497}.MONO|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {3BCBD144-277A-46F7-8390-BDE158A38C22}
+	EndGlobalSection
+EndGlobal

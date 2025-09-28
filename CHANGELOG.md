@@ -1,3 +1,22 @@
+# Version v1.9.0
+- Added configuration support for adding custom Foot Patrols and Sentry positions for officers for weekdays independently
+- Added support for changing total officers count into the officer.json file
+- Moved Officer Override configuration booleans from config.json to officer.json
+- Increased the Private Investigator minimum and maximum random cooldown time  
+- Changed Lethal Cops to use random player instead of using player.local for evaluation
+- Changed Body Search random speed boosts to be less frequent
+- Changed default officer.json values to be more balanced
+- Changed WeedInvestigator feature to now also include Meth and Cocaine consumption to trigger it
+- Changed WeedInvestigator to search for player for a shorter duration
+- Removed Docks Raids feature since its not scalable and dont want to maintain that part of code
+- Removed IncludeSpawned feature since its now redundant after adding Foot Patrols and Sentries config support
+- Cleaned up code and tweaks to improve performance
+- Fixed to support latest 0.4.0f8 source code
+- Fixed bug in crazy cops, lethal cops, nearby crazy cops and drug apprehender being able to pick the same officer for simultaneous evaluation
+- Fixed a bug in WeedInvestigator where it could have overlapping evaluations for selecting an officer to search for player
+- Fixed bugs where Foot Patrol or Body search would not be initiated
+- Debug builds now provide statistics for officer usage to help with balancing generated patrols and sentries with officer count; see DebugModule for more
+
 # Version v1.8.0
 - Increased smallest distance at which drug apprehender can be selected from nearby officers to search for player on foot.
 - Officers field-of-view is now checked after player drug consumption and if at 50 units distance. If player is in field-of-view they get immediate bodysearch. Old behaviour but added a cap of 50 units distance to prevent useless vision cone calls lagging the run.

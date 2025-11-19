@@ -146,7 +146,6 @@ namespace NACopsV1
                 if (officerConfig.OverrideCombatBeh)
                 {
                     officer.Behaviour.CombatBehaviour.GiveUpRange = officerConfig.CombatGiveUpRange;
-                    officer.Behaviour.CombatBehaviour.GiveUpTime = officerConfig.CombatGiveUpTime;
                     officer.Behaviour.CombatBehaviour.DefaultSearchTime = officerConfig.CombatSearchTime;
                     officer.Behaviour.CombatBehaviour.DefaultMovementSpeed = officerConfig.CombatMoveSpeed;
                     officer.Behaviour.CombatBehaviour.GiveUpAfterSuccessfulHits = officerConfig.CombatEndAfterHits;

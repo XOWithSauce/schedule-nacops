@@ -15,7 +15,6 @@ using static NACopsV1.PrivateInvestigator;
 using static NACopsV1.SentryGenerator;
 using static NACopsV1.DebugModule;
 
-
 #if MONO
 using ScheduleOne.Law;
 using ScheduleOne.Persistence;
@@ -49,7 +48,7 @@ namespace NACopsV1
         public const string Description = "Crazyyyy cops";
         public const string Author = "XOWithSauce";
         public const string Company = null;
-        public const string Version = "1.9.0";
+        public const string Version = "1.9.1";
         public const string DownloadLink = null;
     }
 

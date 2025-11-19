@@ -1,3 +1,6 @@
+# Version v1.9.1
+- Compiled mod against latest default and alternate game versions to make it work
+
 # Version v1.9.0
 - Added configuration support for adding custom Foot Patrols and Sentry positions for officers for weekdays independently
 - Added support for changing total officers count into the officer.json file

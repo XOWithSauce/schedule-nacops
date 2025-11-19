@@ -22,8 +22,8 @@
 		<TargetFramework>net48</TargetFramework>
 
 		<AssemblyVersion>1.0.0.0</AssemblyVersion>
-		<FileVersion>1.9.0.0</FileVersion>
-		<Version>1.9.0</Version>
+		<FileVersion>1.9.1.0</FileVersion>
+		<Version>1.9.1</Version>
 		<Product>NACops</Product>
 		<Company>XOWithSauce</Company>
 		<Copyright>Copyright XOWithSauce 2025 Source MIT</Copyright>

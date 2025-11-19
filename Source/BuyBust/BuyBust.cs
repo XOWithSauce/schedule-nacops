@@ -98,7 +98,7 @@ namespace NACopsV1
                 target.CrimeData.SetPursuitLevel(PlayerCrimeData.EPursuitLevel.NonLethal);
                 offc.Movement.SetAgentType(NPCMovement.EAgentType.BigHumanoid);
                 offc.BeginFootPursuit(target.PlayerCode);
-                offc.PursuitBehaviour.SendEnable();
+                offc.PursuitBehaviour.Enable_Networked();
                 target.CrimeData.AddCrime(new AttemptingToSell(), 10);
             }
             else

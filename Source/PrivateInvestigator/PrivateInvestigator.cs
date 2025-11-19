@@ -94,7 +94,7 @@ namespace NACopsV1
                 copNet.gameObject.SetActive(true);
                 PoliceOfficer offc = copNet.gameObject.GetComponent<PoliceOfficer>();
                 currentSummoned.Add(offc);
-                offc.FootPatrolBehaviour.SendEnable();
+                offc.FootPatrolBehaviour.Enable_Networked();
                 offc.Movement.WalkSpeed = 5f;
                 offc.Movement.RunSpeed = 8f;
 
@@ -130,7 +130,7 @@ namespace NACopsV1
                     float distance = Vector3.Distance(offc.transform.position, randomPlayer.transform.position);
 
                     if (offc.Behaviour.activeBehaviour != null && offc.Behaviour.activeBehaviour.ToString().ToLower().Contains("schedule"))
-                        offc.FootPatrolBehaviour.SendEnable();
+                        offc.FootPatrolBehaviour.Enable_Networked();
 
                     if (!offc.Movement.CanMove() || elapsed >= maxTime || randomPlayer.CrimeData.CurrentPursuitLevel != PlayerCrimeData.EPursuitLevel.None)
                         break;

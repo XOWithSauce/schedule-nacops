@@ -5,24 +5,23 @@ using UnityEngine;
 
 using static NACopsV1.NACops;
 using static NACopsV1.DebugModule;
+using static NACopsV1.AvatarUtility;
 
 #if MONO
 using ScheduleOne.AvatarFramework.Equipping;
+using ScheduleOne.NPCs.Behaviour;
 using ScheduleOne.Map;
 using ScheduleOne.NPCs;
-using ScheduleOne.NPCs.Behaviour;
 using ScheduleOne.Police;
 using ScheduleOne.UI;
-using FishNet.Managing;
 using FishNet.Object;
 #else
 using Il2CppScheduleOne.AvatarFramework.Equipping;
+using Il2CppScheduleOne.NPCs.Behaviour;
 using Il2CppScheduleOne.Map;
 using Il2CppScheduleOne.NPCs;
-using Il2CppScheduleOne.NPCs.Behaviour;
 using Il2CppScheduleOne.Police;
 using Il2CppScheduleOne.UI;
-using Il2CppFishNet.Managing;
 using Il2CppFishNet.Object;
 #endif
 
@@ -30,55 +29,45 @@ using Il2CppFishNet.Object;
 namespace NACopsV1
 {
 
-    #region Harmony Bodysearch
-    [HarmonyPatch(typeof(BodySearchScreen), "Open")]
-    public static class BodySearch_Open_Patch
+
+    #region Harmony Arrest Update
+    [HarmonyPatch(typeof(PursuitBehaviour), "UpdateArrest")]
+    public static class PursuitBehaviour_UpdateArrest_Patch
     {
-        public static bool Prefix(BodySearchScreen __instance, NPC _searcher, ref float searchTime)
+        public static bool Prefix(PursuitBehaviour __instance, float tick)
         {
-            if (officerConfig.OverrideBodySearch)
+            // if config is false dont patch this method
+            if (!officerConfig.OverrideArresting) return true;
+
+            // else its identical to source code but bound to config
+            // with range and speed
+            if (__instance.TargetPlayer == null) return false;
+            if (!__instance.arrestingEnabled) return false;
+            if (Vector3.Distance(__instance.Npc.CenterPoint, __instance.TargetPlayer.Avatar.CenterPoint) < officerConfig.ArrestRange && __instance.IsTargetRecentlyVisible)
             {
-                searchTime = UnityEngine.Random.Range(8f, 20f);
+                __instance.timeWithinArrestRange += tick;
+                if (__instance.timeWithinArrestRange > 0.5f) 
+                    __instance.wasInArrestCircleLastFrame = true;
             }
-            return true;
+            else
+            {
+                if (__instance.wasInArrestCircleLastFrame)
+                {
+                    __instance.leaveArrestCircleCount++;
+                    __instance.wasInArrestCircleLastFrame = false;
+                }
+                __instance.timeWithinArrestRange = Mathf.Clamp(__instance.timeWithinArrestRange - tick, 0f, float.MaxValue);
+            }
+
+            if (__instance.TargetPlayer.IsOwner && __instance.timeWithinArrestRange / officerConfig.ArrestTime > __instance.TargetPlayer.CrimeData.CurrentArrestProgress)
+            {
+                __instance.TargetPlayer.CrimeData.SetArrestProgress(__instance.timeWithinArrestRange / officerConfig.ArrestTime);
+            }
+
+            // dont run since mod handles identical logic
+            return false;
         }
     }
-
-    [HarmonyPatch(typeof(BodySearchScreen), "Update")]
-    public static class BodySearch_Update_Patch
-    {
-        private static float randomSpeedTarget = 0f;
-        private static float timeUntilNextRandomChange = 0f;
-        private static bool isBoostingRandomly = false;
-        public static void Postfix(BodySearchScreen __instance)
-        {
-            if (!__instance.IsOpen || !officerConfig.OverrideBodySearch)
-                return;
-
-            if (!isBoostingRandomly)
-            {
-                if (UnityEngine.Random.Range(0f, 1f) > 0.98f)
-                {
-                    isBoostingRandomly = true;
-                    timeUntilNextRandomChange = UnityEngine.Random.Range(0.8f, 1.5f);
-                    randomSpeedTarget = UnityEngine.Random.Range(3.5f, 4.5f);
-                }
-            }
-
-            if (isBoostingRandomly)
-            {
-                timeUntilNextRandomChange -= Time.deltaTime;
-                if (timeUntilNextRandomChange <= 0f)
-                {
-                    isBoostingRandomly = false;
-                }
-                __instance.speedBoost = Mathf.MoveTowards(__instance.speedBoost, randomSpeedTarget, Time.deltaTime * 6f);
-            }
-
-            return;
-        }
-    }
-
     #endregion
 
     public static class OfficerOverrides
@@ -97,29 +86,42 @@ namespace NACopsV1
                 yield break;
             PoliceStation station = PoliceStation.PoliceStations[0];
 #endif
-            NetworkManager netManager = UnityEngine.Object.FindObjectOfType<NetworkManager>(true);
-
             for (int i = 0; i < station.OfficerPool.Count; i++)
                 generatedOfficerPool.Add(station.OfficerPool[i]);
 
             for (int i = 0; i < officerConfig.ModAddedOfficersCount; i++)
             {
-                NetworkObject copNet = UnityEngine.Object.Instantiate<NetworkObject>(policeBase);
-                NPC myNpc = copNet.gameObject.GetComponent<NPC>();
-                myNpc.ID = $"NACops_Officer_{i}";
-                myNpc.FirstName = "Cop";
-                myNpc.LastName = "";
-                myNpc.transform.parent = NPCManager.Instance.NPCContainer;
-                NPCManager.NPCRegistry.Add(myNpc);
-                netManager.ServerManager.Spawn(copNet);
-                copNet.gameObject.SetActive(true);
-                copNet.name = $"NACops_Officer_{i}";
-                PoliceOfficer offc = copNet.gameObject.GetComponent<PoliceOfficer>();
-                generatedOfficerPool.Add(offc);
+                PoliceOfficer offc = SpawnOfficerRuntime(i);
                 station.NPCEnteredBuilding(offc);
+                generatedOfficerPool.Add(offc);
+                PoliceOfficer.Officers.Add(offc);
             }
             station.OfficerPool = generatedOfficerPool;
             yield return null;
+        }
+
+        public static PoliceOfficer SpawnOfficerRuntime(int i, bool autoDeactivate = true)
+        {
+            NetworkObject copNet = UnityEngine.Object.Instantiate<NetworkObject>(policeBase);
+            PoliceOfficer offc = copNet.gameObject.GetComponent<PoliceOfficer>();
+            offc.AutoDeactivate = autoDeactivate; // Prevent from returning to station and from being added to officer pool
+
+            NPC myNpc = copNet.gameObject.GetComponent<NPC>();
+            myNpc.ID = $"NACops_RuntimeOfficer_{i}";
+            myNpc.FirstName = "Officer";
+            myNpc.LastName = "";
+            myNpc.transform.parent = NPCManager.Instance.NPCContainer;
+            NPCManager.NPCRegistry.Add(myNpc);
+            networkManager.ServerManager.Spawn(copNet);
+            copNet.gameObject.SetActive(true);
+
+            copNet.name = $"NACops_RuntimeOfficer_{i}";
+            return offc;
+        }
+     
+        public static PoliceOfficer SpawnOfficerRuntime(bool autoDeactivate = true)
+        {
+            return SpawnOfficerRuntime(UnityEngine.Random.Range(1000, 6000), autoDeactivate);
         }
 
         public static IEnumerator SetOfficers()
@@ -131,16 +133,22 @@ namespace NACopsV1
                 officer.Leniency = 0.1f;
                 officer.Suspicion = 1f;
 
+                SetRandomAvatar(officer);
+
+                if (officerConfig.CanEnterBuildings)
+                {
+                    officer.Movement.Agent.areaMask = 57; // identical to employee
+                }
+
                 if (officerConfig.OverrideBodySearch)
                 {
-                    officer.BodySearchDuration = 20f;
-                    officer.BodySearchChance = 1f;
+                    officer.BodySearchDuration = officerConfig.BodySearchDuration;
+                    officer.BodySearchChance = officerConfig.BodySearchChance;
                 }
 
                 if (officerConfig.OverrideMovement)
                 {
-                    officer.Movement.RunSpeed = officerConfig.MovementRunSpeed;
-                    officer.Movement.WalkSpeed = officerConfig.MovementWalkSpeed;
+                    officer.Movement.MoveSpeedMultiplier = officerConfig.MovementSpeedMultiplier;
                 }
 
                 if (officerConfig.OverrideCombatBeh)
@@ -161,9 +169,7 @@ namespace NACopsV1
 
                 if (officerConfig.OverrideWeapon)
                 {
-
-                    var gun = officer.GunPrefab; // these 2
-                    var pursuitGun = officer.PursuitBehaviour.Weapon_Gun; // ? point to the same object?
+                    var gun = officer.GunPrefab;
 #if MONO
                     if (gun != null && gun is AvatarRangedWeapon rangedWeapon)
                     {
@@ -197,6 +203,8 @@ namespace NACopsV1
                             temp.RaiseTime = officerConfig.WeaponRaiseTime;
                             temp.HitChance_MaxRange = officerConfig.WeaponHitChanceMax;
                             temp.HitChance_MinRange = officerConfig.WeaponHitChanceMin;
+                            if (officer.Behaviour.CombatBehaviour.DefaultWeapon == null)
+                                officer.Behaviour.CombatBehaviour.DefaultWeapon = temp;
                         }
                         AvatarWeapon temp2 = gun.TryCast<AvatarWeapon>();
                         if (temp2 != null)
@@ -211,6 +219,7 @@ namespace NACopsV1
             yield break;
         }
 
+        
     }
 
 }

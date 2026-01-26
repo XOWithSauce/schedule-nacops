@@ -16,27 +16,27 @@ using Il2CppScheduleOne.NPCs.Behaviour;
 
 namespace NACopsV1
 {
-    public class FootPatrolGenerator
+    public class VehiclePatrolGenerator
     {
         // as instance, usable weekdays
-        public static Dictionary<PatrolInstance, List<string>> generatedPatrolInstances = new();
-        public static FootPatrolsSerialized serPatrols;
-        public static PatrolInstance[] GeneratePatrol(LawActivitySettings template, string day = "")
+        public static Dictionary<VehiclePatrolInstance, List<string>> generatedVehiclePatrolInstances = new();
+        public static VehiclePatrolsSerialized serVehiclePatrols;
+        public static VehiclePatrolInstance[] GenerateVehiclePatrol(LawActivitySettings template, string day = "")
         {
 
-            if (generatedPatrolInstances.Count == 0)
+            if (generatedVehiclePatrolInstances.Count == 0)
             {
-                Log("Generating new patrol routes");
-                Transform patrolsTr = LawController.Instance.transform.Find("PatrolRoutes");
+                Log("Generating new vehicle patrol routes");
+                Transform patrolsTr = LawController.Instance.transform.Find("VehiclePatrolRoutes");
                 // basically foreach this but needs to be loaded from config file
-                if (serPatrols == null)
-                    serPatrols = LoadPatrolsConfig();
-                foreach (SerializedFootPatrol ser in serPatrols.loadedPatrols)
+                if (serVehiclePatrols == null)
+                    serVehiclePatrols = LoadVehiclePatrolsConfig();
+                foreach (SerializedVehiclePatrol ser in serVehiclePatrols.loadedVehiclePatrols)
                 {
                     GameObject newPatrolObject = new(ser.name);
                     Log("Generate object for patrol: " + ser.name);
                     Log($"- Days: {string.Join(" ", ser.days)}");
-                    FootPatrolRoute route = newPatrolObject.AddComponent<FootPatrolRoute>();
+                    VehiclePatrolRoute route = newPatrolObject.AddComponent<VehiclePatrolRoute>();
                     route.name = ser.name;
                     route.StartWaypointIndex = 0;
 
@@ -53,31 +53,29 @@ namespace NACopsV1
 
                     newPatrolObject.transform.parent = patrolsTr;
 
-                    PatrolInstance inst = new();
+                    VehiclePatrolInstance inst = new();
                     inst.StartTime = ser.startTime;
-                    inst.EndTime = ser.endTime;
-                    inst.Members = ser.members;
                     inst.Route = route;
-                    inst.OnlyIfCurfewEnabled = ser.onlyIfCurfew;
                     inst.IntensityRequirement = ser.intensityRequirement;
+                    inst.OnlyIfCurfewEnabled = ser.onlyIfCurfew;
 
                     newPatrolObject.transform.parent = patrolsTr;
                     newPatrolObject.SetActive(true);
 
-                    generatedPatrolInstances.Add(inst, ser.days);
+                    generatedVehiclePatrolInstances.Add(inst, ser.days);
                 }
             }
 
             if (day == "")
             {
-                int prevLen = template.Patrols.Length;
-                int addedAmount = generatedPatrolInstances.Count;
+                int prevLen = template.VehiclePatrols.Length;
+                int addedAmount = generatedVehiclePatrolInstances.Count;
                 int newLen = prevLen + addedAmount;
-                PatrolInstance[] newPatrolInstances = new PatrolInstance[newLen];
-                System.Array.Copy(template.Patrols, newPatrolInstances, prevLen);
+                VehiclePatrolInstance[] newPatrolInstances = new VehiclePatrolInstance[newLen];
+                System.Array.Copy(template.VehiclePatrols, newPatrolInstances, prevLen);
 
                 int i = prevLen;
-                foreach (KeyValuePair<PatrolInstance, List<string>> kvp in generatedPatrolInstances)
+                foreach (KeyValuePair<VehiclePatrolInstance, List<string>> kvp in generatedVehiclePatrolInstances)
                 {
                     if (!(i < newLen)) break;
                     newPatrolInstances[i] = kvp.Key;
@@ -87,11 +85,11 @@ namespace NACopsV1
             }
             else
             {
-                int prevLen = template.Patrols.Length;
+                int prevLen = template.VehiclePatrols.Length;
 
                 // Decide the added amount
                 int addedAmount = 0;
-                foreach (KeyValuePair<PatrolInstance, List<string>> kvp in generatedPatrolInstances)
+                foreach (KeyValuePair<VehiclePatrolInstance, List<string>> kvp in generatedVehiclePatrolInstances)
                 {
                     if (kvp.Value.Contains(day))
                     {
@@ -99,14 +97,14 @@ namespace NACopsV1
                     }
                 }
 
-                if (addedAmount == 0) return template.Patrols; // No change
+                if (addedAmount == 0) return template.VehiclePatrols; // No change
 
                 int newLen = prevLen + addedAmount;
-                PatrolInstance[] newPatrolInstances = new PatrolInstance[newLen];
-                System.Array.Copy(template.Patrols, newPatrolInstances, prevLen);
+                VehiclePatrolInstance[] newPatrolInstances = new VehiclePatrolInstance[newLen];
+                System.Array.Copy(template.VehiclePatrols, newPatrolInstances, prevLen);
 
                 int i = prevLen;
-                foreach (KeyValuePair<PatrolInstance, List<string>> kvp in generatedPatrolInstances)
+                foreach (KeyValuePair<VehiclePatrolInstance, List<string>> kvp in generatedVehiclePatrolInstances)
                 {
                     if (!(i < newLen)) break;
                     if (kvp.Value.Contains(day))
@@ -115,24 +113,22 @@ namespace NACopsV1
                         i++;
                     }
                 }
-                Log($"    {day}: Added {addedAmount} patrols ({prevLen} -> {newLen})");
+                Log($"    {day}: Added {addedAmount} vehicle patrols ({prevLen} -> {newLen})");
                 return newPatrolInstances;
             }
         }
     }
 
     [Serializable]
-    public class SerializedFootPatrol
+    public class SerializedVehiclePatrol
     {
-        public int startTime = 1900;
-        public int endTime = 500;
-        public int members = 1;
+        public int startTime = 2300;
         public int intensityRequirement = 1;
         public bool onlyIfCurfew = false;
 
-        public string name = "NACops Extra Loop";
-        public List<string> days; //= new() { "mon", "tue", "wed", "thu", "fri", "sat", "sun" }; // default all days
+        public string name = "NACops Vehicle Extra Loop";
+        public List<string> days; //= new() { "mon", "tue", "wed", "thu", "fri", "sat", "sun" }; // default all days 
 
-        public List<Vector3> waypoints = new();
+        public List<Vector3> waypoints = new(); 
     }
 }

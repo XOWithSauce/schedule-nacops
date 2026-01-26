@@ -9,27 +9,24 @@ using static NACopsV1.DebugModule;
 #if MONO
 using ScheduleOne.GameTime;
 using ScheduleOne.Money;
-using ScheduleOne.NPCs.Behaviour;
 using ScheduleOne.PlayerScripts;
 using ScheduleOne.Police;
 using ScheduleOne.VoiceOver;
+using ScheduleOne.DevUtilities;
 #else
 using Il2CppScheduleOne.GameTime;
 using Il2CppScheduleOne.Money;
-using Il2CppScheduleOne.NPCs.Behaviour;
 using Il2CppScheduleOne.PlayerScripts;
 using Il2CppScheduleOne.Police;
 using Il2CppScheduleOne.VoiceOver;
+using Il2CppScheduleOne.DevUtilities;
 #endif
-
 
 namespace NACopsV1
 {
 
     public static class NearbyCrazyCops
     {
-
-
         private static float minWait;
         private static float maxWait;
 
@@ -41,8 +38,10 @@ namespace NACopsV1
 
         public static IEnumerator RunNearbyCrazyCops()
         {
+            if (!networkManager.IsServer) yield break;
+
             Log("Nearby Crazy Cop Enabled");
-            (minWait, maxWait) = ThresholdUtils.Evaluate(ThresholdMappings.NearbyCrazThres, TimeManager.Instance.ElapsedDays);
+            (minWait, maxWait) = ThresholdUtils.Evaluate(thresholdConfig.NearbyCrazyFrequency, NetworkSingleton<TimeManager>.Instance.ElapsedDays);
             randWaits = new()
             {
                 new WaitForSeconds(UnityEngine.Random.Range(minWait, maxWait)),
@@ -58,43 +57,42 @@ namespace NACopsV1
                 Log("Nearby Crazy Cop Evaluate");
                 Player[] players = UnityEngine.Object.FindObjectsOfType<Player>(true);
 
-                (minRange, maxRange) = ThresholdUtils.Evaluate(ThresholdMappings.NearbyCrazRange, (int)MoneyManager.Instance.LifetimeEarnings);
+                // if threshold has changed update awaits now
+                float newMin;
+                float newMax;
+                (newMin, newMax) = ThresholdUtils.Evaluate(thresholdConfig.NearbyCrazyFrequency, NetworkSingleton<TimeManager>.Instance.ElapsedDays);
+                if (newMin != minWait || newMax != maxWait)
+                {
+                    randWaits.Clear();
+                    for (int i = 0; i < 3; i++)
+                        randWaits.Add(new WaitForSeconds(UnityEngine.Random.Range(newMin, newMax)));
+                }
+
+                (minRange, maxRange) = ThresholdUtils.Evaluate(thresholdConfig.NearbyCrazyRange, (int)MoneyManager.Instance.LifetimeEarnings);
                 float minDistance = UnityEngine.Random.Range(minRange, maxRange);
 
-                foreach (Player player in players)
+                foreach (Player player in Player.PlayerList)
                 {
-                    if (player.CurrentProperty != null)
-                        continue;
+                    player.CrimeData.CheckNearestOfficer();
+                    PoliceOfficer officer = player.CrimeData.NearestOfficer;
+                    if (officer == null) continue;
 
-                    foreach (PoliceOfficer officer in allActiveOfficers)
+                    if (!CanProceed(officer, player, minDistance, ignoreVehicle:true)) continue;
+
+                    GUIDInUse.Add(officer.BakedGUID);
+                    if (officer.IsInVehicle && player.IsInVehicle)
                     {
-                        yield return Wait01;
-                        if (!registered) yield break;
-
-                        if (officer.IsInVehicle)
-                            continue;
-
-                        if (officer.Behaviour.activeBehaviour && officer.Behaviour.activeBehaviour is VehiclePatrolBehaviour)
-                            continue;
-
-                        if (officer.Behaviour.activeBehaviour && officer.Behaviour.activeBehaviour is VehiclePursuitBehaviour)
-                            continue;
-
-                        if (GUIDInUse.Contains(officer.BakedGUID))
-                            continue;
-
-                        float distance = Vector3.Distance(officer.transform.position, player.transform.position);
-                        if (distance < minDistance && !currentSummoned.Contains(officer) && !currentDrugApprehender.Contains(officer) && !IsStationNearby(player.transform.position) && !officer.IsInVehicle && !officer.isInBuilding && !officer.Health.IsDead && !officer.Health.IsKnockedOut)
-                        {
-                            GUIDInUse.Add(officer.BakedGUID);
-                            coros.Add(MelonCoroutines.Start(GreedyBodySearchFind(officer, player, minDistance)));
-                            break;
-                        }
-
+                        officer.VehiclePursuitBehaviour.AssignTarget(player);
+                        officer.VehiclePursuitBehaviour.beginAsSighted = true;
+                        officer.VehiclePursuitBehaviour.Activate();
                     }
+                    else if (!officer.IsInVehicle)
+                    {
+                        coros.Add(MelonCoroutines.Start(GreedyBodySearchFind(officer, player, minDistance)));
+                    }
+                    break;
                 }
             }
-
         }
 
         public static IEnumerator GreedyBodySearchFind(PoliceOfficer officer, Player player, float minDistance)

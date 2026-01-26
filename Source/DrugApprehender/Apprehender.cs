@@ -21,8 +21,6 @@ using Il2CppScheduleOne.Product;
 
 namespace NACopsV1
 {
-
-
     [HarmonyPatch(typeof(Player), "ConsumeProduct")]
     public static class Player_ConsumeProduct_Patch
     {
@@ -32,6 +30,7 @@ namespace NACopsV1
         static WeedInstance tempWeed = null;
         static MethInstance tempMeth = null;
         static CocaineInstance tempCoke = null;
+        static ShroomInstance tempShroom = null;
 #endif
         public static bool Prefix(Player __instance, ProductItemInstance product)
         {
@@ -53,17 +52,20 @@ namespace NACopsV1
             bool isWeed = product is WeedInstance;
             bool isMeth = product is MethInstance;
             bool isCoca = product is CocaineInstance;
-            pass = isWeed || isMeth || isCoca;
+            bool isShroom = product is ShroomInstance;
+            pass = isWeed || isMeth || isCoca || isShroom;
             Log("Is Supported Instance for Apprehender: " + pass);
 #else
             tempWeed = product.TryCast<WeedInstance>();
             tempMeth = product.TryCast<MethInstance>();
             tempCoke = product.TryCast<CocaineInstance>();
-            pass = tempWeed != null || tempMeth != null || tempCoke != null;
+            tempShroom = product.TryCast<ShroomInstance>();
+            pass = tempWeed != null || tempMeth != null || tempCoke != null || tempShroom != null;
             Log("Is Supported Instance for Apprehender: " + pass);
             tempWeed = null;
             tempMeth = null;
             tempCoke = null;
+            tempShroom = null;
 #endif
             if (pass)
             {
@@ -72,6 +74,7 @@ namespace NACopsV1
                 PoliceOfficer noticeOfficer = null;
                 float smallestDistance = 49f;
                 bool direct = false;
+
                 foreach (PoliceOfficer offc in allActiveOfficers)
                 {
                     yield return Wait01;
@@ -84,8 +87,6 @@ namespace NACopsV1
                         coros.Add(MelonCoroutines.Start(GiveFalseCharges(severity: 3, player)));
                         direct = true;
                         Log("Apprehend immediate direct");
-                        string activity = offc.Behaviour.activeBehaviour?.ToString();
-                        Log("Current Activity: " + activity);
                         break;
                     }
                     else

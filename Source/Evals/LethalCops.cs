@@ -1,6 +1,5 @@
 
 using System.Collections;
-using MelonLoader;
 using UnityEngine;
 
 using static NACopsV1.BaseUtility;
@@ -12,11 +11,13 @@ using ScheduleOne.GameTime;
 using ScheduleOne.Money;
 using ScheduleOne.PlayerScripts;
 using ScheduleOne.Police;
+using ScheduleOne.DevUtilities;
 #else
 using Il2CppScheduleOne.GameTime;
 using Il2CppScheduleOne.Money;
 using Il2CppScheduleOne.PlayerScripts;
 using Il2CppScheduleOne.Police;
+using Il2CppScheduleOne.DevUtilities;
 #endif
 
 namespace NACopsV1
@@ -36,8 +37,9 @@ namespace NACopsV1
 
         public static IEnumerator RunNearbyLethalCops()
         {
+            if (!networkManager.IsServer) yield break;
 
-            (minWait, maxWait) = ThresholdUtils.Evaluate(ThresholdMappings.LethalCopFreq, TimeManager.Instance.ElapsedDays);
+            (minWait, maxWait) = ThresholdUtils.Evaluate(thresholdConfig.LethalCopFrequency, NetworkSingleton<TimeManager>.Instance.ElapsedDays);
             randWaits = new()
             {
                 new WaitForSeconds(UnityEngine.Random.Range(minWait, maxWait)),
@@ -54,36 +56,42 @@ namespace NACopsV1
                 yield return currentAwait;
                 if (!registered) yield break;
 
-                (minRange, maxRange) = ThresholdUtils.Evaluate(ThresholdMappings.LethalCopRange, (int)MoneyManager.Instance.LifetimeEarnings);
+                // if threshold has changed update awaits now
+                float newMin;
+                float newMax;
+                (newMin, newMax) = ThresholdUtils.Evaluate(thresholdConfig.LethalCopFrequency, NetworkSingleton<TimeManager>.Instance.ElapsedDays);
+                if (newMin != minWait || newMax != maxWait)
+                {
+                    randWaits.Clear();
+                    for (int i = 0; i < 3; i++)
+                        randWaits.Add(new WaitForSeconds(UnityEngine.Random.Range(newMin, newMax)));
+                }
+
+                (minRange, maxRange) = ThresholdUtils.Evaluate(thresholdConfig.LethalCopRange, (int)MoneyManager.Instance.LifetimeEarnings);
                 float minDistance = UnityEngine.Random.Range(minRange, maxRange);
 
-                Player[] players = UnityEngine.Object.FindObjectsOfType<Player>(true);
-                Player randomPlayer = players[UnityEngine.Random.Range(0, players.Length)];
-
-                foreach (PoliceOfficer officer in allActiveOfficers)
+                foreach (Player player in Player.PlayerList)
                 {
-                    yield return Wait01;
+                    player.CrimeData.CheckNearestOfficer();
+                    PoliceOfficer officer = player.CrimeData.NearestOfficer;
+                    if (officer == null) continue;
+
+                    if (!CanProceed(officer, player, minDistance)) continue;
+
+                    GUIDInUse.Add(officer.BakedGUID);
+                    officer.Movement.FacePoint(Player.Local.transform.position, lerpTime: 0.4f);
+                    yield return Wait05;
                     if (!registered) yield break;
 
-                    float distance = Vector3.Distance(officer.transform.position, randomPlayer.transform.position);
-
-                    if (distance < minDistance && !currentSummoned.Contains(officer) && !currentDrugApprehender.Contains(officer) && !IsStationNearby(randomPlayer.transform.position) && !randomPlayer.CrimeData.BodySearchPending && !officer.IsInVehicle && officer.Behaviour.activeBehaviour != officer.CheckpointBehaviour && !officer.isInBuilding && !GUIDInUse.Contains(officer.BakedGUID))
+                    if (officer.Awareness.VisionCone.IsPlayerVisible(player))
                     {
-                        GUIDInUse.Add(officer.BakedGUID);
-                        officer.Movement.FacePoint(Player.Local.transform.position, lerpTime: 0.4f);
-                        yield return Wait05;
-                        if (!registered) yield break;
-
-                        if (officer.Awareness.VisionCone.IsPlayerVisible(randomPlayer))
-                        {
-                            randomPlayer.CrimeData.SetPursuitLevel(PlayerCrimeData.EPursuitLevel.Lethal);
-                            officer.BeginFootPursuit(randomPlayer.PlayerCode);
-                        }
-                        if (GUIDInUse.Contains(officer.BakedGUID))
-                            GUIDInUse.Remove(officer.BakedGUID);
-                        break;
+                        player.CrimeData.SetPursuitLevel(PlayerCrimeData.EPursuitLevel.Lethal);
+                        officer.BeginFootPursuit(player.PlayerCode);
                     }
+                    if (GUIDInUse.Contains(officer.BakedGUID))
+                        GUIDInUse.Remove(officer.BakedGUID);
                 }
+                
             }
         }
 

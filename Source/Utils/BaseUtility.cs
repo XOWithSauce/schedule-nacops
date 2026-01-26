@@ -1,6 +1,5 @@
 
 using System.Collections;
-
 using MelonLoader;
 using UnityEngine;
 
@@ -32,6 +31,7 @@ namespace NACopsV1
         public static List<string> GUIDInUse = new List<string>();
         public static IEnumerator AttemptWarp(PoliceOfficer offc, Transform target)
         {
+
             Vector3 warpInit = Vector3.zero;
             int maxWarpAttempts = 10;
             for (int i = 0; i < maxWarpAttempts; i++)
@@ -45,8 +45,9 @@ namespace NACopsV1
                 zInitOffset *= UnityEngine.Random.Range(0f, 1f) > 0.5f ? 1f : -1f;
                 Vector3 targetWarpPosition = target.position + new Vector3(xInitOffset, 0f, zInitOffset);
                 offc.Movement.GetClosestReachablePoint(targetWarpPosition, out warpInit);
-                if (warpInit != Vector3.zero)
+                if (warpInit != Vector3.zero && !Player.Local.IsPointVisibleToPlayer(warpInit))
                 {
+                    Log("Warp succeeded");
                     offc.Movement.Warp(warpInit);
                     break;
                 }
@@ -110,6 +111,52 @@ namespace NACopsV1
             if (!registered) yield break;
             player.CrimeData.SetPursuitLevel(PlayerCrimeData.EPursuitLevel.Investigating);
             yield return null;
+        }
+        public static bool CanProceed(PoliceOfficer officer, Player player, float minDist, bool ignoreVehicle = false)
+        {
+            if (!ignoreVehicle)
+                if (officer.IsInVehicle)
+                    return false;
+
+            if (officer.isInBuilding)
+                return false;
+
+            if (officer.Health.IsDead || officer.Health.IsKnockedOut)
+                return false;
+
+            if (player.CurrentProperty != null)
+                return false;
+
+            if (player.CrimeData.CurrentPursuitLevel != PlayerCrimeData.EPursuitLevel.None)
+                return false;
+
+            if (!ignoreVehicle)
+                if (officer.Behaviour.activeBehaviour && officer.Behaviour.activeBehaviour == officer.VehiclePatrolBehaviour)
+                    return false;
+
+            if (officer.Behaviour.activeBehaviour && officer.Behaviour.activeBehaviour == officer.CheckpointBehaviour)
+                return false;
+
+            if (GUIDInUse.Contains(officer.BakedGUID))
+                return false;
+
+            if (currentSummoned.Contains(officer))
+                return false;
+
+            if (currentDrugApprehender.Contains(officer))
+                return false;
+
+            if (IsStationNearby(player.CenterPointTransform.position))
+                return false;
+
+            if (player.CrimeData.BodySearchPending)
+                return false;
+
+            float distance = Vector3.Distance(officer.CenterPoint, player.CenterPointTransform.position);
+            if (distance > minDist)
+                return false;
+
+            return true;
         }
 
     }

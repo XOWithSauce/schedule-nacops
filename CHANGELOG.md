@@ -1,3 +1,44 @@
+# Version 2.0.0
+- Added Property Raids feature that allows cops to destroy your properties and steal illegal products. Raids can be configured in raid.json.
+- Added Property Heat system that allows the Property Raids to happen. Private Investigator builds up heat. Heat data is saved in NACops/HeatData/(organisation name).json
+- Added new Racist Cops feature where cops really just dont like black people
+- Added new No Open Carry Weapons feature that makes guns illegal to carry in hand and in containers
+- Added Configuration support for Vehicle Patrols in vehiclepatrols.json file
+- Added Configuration support for allowing Officers to enter inside buildings in the officers.json file (CanEnterBuildings : true)
+  - While this is enabled (by default in the mod) the player can enter their buildings while wanted
+- Added Configuration support for changing arrest speed and range in the officers.json file
+- Added Configuration support for changing the max amount of police vehicles in the game in the officers.json file
+- Added Configuration support for the Frequencies, Ranges and Probabilities of certain events (now in progression.json)
+  - Configuration scales difficulty against Days Played, Networth & Customer relationships (more in readme)
+- Added support for Random Avatar generation for officers. 
+  - Now Private Investigator uses Custom random avatar.
+  - Cops added by the mod config (officers.json ModAddedOfficersCount) get also custom random avatar
+- Added support for using Console commands for NACops features, spawning visuals for the police patrols and building new routes using commands
+- Added Shrooms to the WeedInvestigator feature so now cops will try to search for player consuming it
+
+- Refactored the Private Investigator logic to be better for its movement and location selection and also to build up property heat
+- Moved the default location of spawnable sentrys, vehicle patrols and foot patrols .json files from NACops/file.json to NACops/Spawn/file.json
+- Moved the Vehicle Pursuit related script from CrazyCops (now removed feature) to NearbyCrazyCops feature
+
+- Changed the LethalCops and NearbyCrazyCops to only evaluate the nearest officer always
+- Changed the default mod builds to contain all debug logging which can be enabled in runtime by using console command "nacops enable logs", console feedback is enabled by default
+- Changed the config officers.json values for WalkSpeed and RunSpeed to be a single value: MovementSpeedMultiplier
+- Changed the config system to be more robust and generate the necessary .json configuration templates to Mods/NACops/ directory if missing
+- Changed the default order of officers.json related values to be better ordered
+- Changed the mod config and startup to start loading after game indicates succesful game load state
+- Changed the base probability for customers snitching samples from 0.8 to 0.5 and changed the progression related values in progression.json to compensate
+- Changed default body search speed to be faster
+- Changed Lethal Cops to be disabled by default in the mod config
+
+- Fixed a bug in the Private Investigator where the warping script would crash the game
+- Fixed a bug in the Private Investigator where after exiting a save the mod state would not reset properly and never spawn again
+- Fixed a bug in the coroutines that use progression where the progression would not update frequently enough
+- Cleaned up avatar related code to prevent errors in the game logs
+
+- Removed random boosting logic for the bodysearch since it didnt really work
+- Removed statistics analysis related code from repo 
+- Removed CrazyCops feature as it felt excessive / unnecessary
+
 # Version v1.9.1
 - Compiled mod against latest default and alternate game versions to make it work
 

@@ -60,6 +60,7 @@ namespace NACopsV1
                     inst.Members = ser.members;
                     inst.Location = loc;
                     inst.OnlyIfCurfewEnabled = ser.onlyIfCurfew;
+                    inst.IntensityRequirement = ser.intensityRequirement;
 
                     newSentryObject.transform.parent = sentriesTr;
                     newSentryObject.SetActive(true);

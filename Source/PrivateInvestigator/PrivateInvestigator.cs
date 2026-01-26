@@ -2,11 +2,12 @@
 using System.Collections;
 using MelonLoader;
 using UnityEngine;
-using UnityEngine.AI;
 
 using static NACopsV1.BaseUtility;
 using static NACopsV1.NACops;
 using static NACopsV1.DebugModule;
+using static NACopsV1.OfficerOverrides;
+using static NACopsV1.AvatarUtility;
 
 #if MONO
 using ScheduleOne.GameTime;
@@ -14,27 +15,25 @@ using ScheduleOne.Money;
 using ScheduleOne.NPCs;
 using ScheduleOne.PlayerScripts;
 using ScheduleOne.Police;
-using ScheduleOne.VoiceOver;
-using static ScheduleOne.AvatarFramework.AvatarSettings;
-using FishNet.Object;
-
+using ScheduleOne.Vision;
+using ScheduleOne.Map;
+using ScheduleOne.DevUtilities;
 #else
 using Il2CppScheduleOne.GameTime;
 using Il2CppScheduleOne.Money;
 using Il2CppScheduleOne.NPCs;
 using Il2CppScheduleOne.PlayerScripts;
 using Il2CppScheduleOne.Police;
-using Il2CppScheduleOne.VoiceOver;
-using static Il2CppScheduleOne.AvatarFramework.AvatarSettings;
-using Il2CppFishNet.Object;
+using Il2CppScheduleOne.Vision;
+using Il2CppScheduleOne.Map;
+using Il2CppScheduleOne.DevUtilities;
 #endif
-
-
 
 namespace NACopsV1
 {
     public static class PrivateInvestigator
     {
+        public static float maxInvestigationTime = 240f;
 
         private static float minWait;
         private static float maxWait;
@@ -42,12 +41,15 @@ namespace NACopsV1
         private static List<WaitForSeconds> randWaits;
         private static WaitForSeconds currentAwait;
 
+        private static int playerLayer = -1;
+        private static int obstacleLayerMask = -1;
         public static IEnumerator RunInvestigator()
         {
             Log("Private Investigator Enabled");
-            float maxTime = 120f;
+            playerLayer = LayerMask.NameToLayer("Player");
+            obstacleLayerMask = LayerMask.GetMask("Terrain", "Default", "Vehicle");
 
-            (minWait, maxWait) = ThresholdUtils.Evaluate(ThresholdMappings.PIThres, (int)MoneyManager.Instance.LifetimeEarnings);
+            (minWait, maxWait) = ThresholdUtils.Evaluate(thresholdConfig.PIFrequency, (int)MoneyManager.Instance.LifetimeEarnings);
             randWaits = new()
             {
                 new WaitForSeconds(UnityEngine.Random.Range(minWait, maxWait)),
@@ -60,13 +62,21 @@ namespace NACopsV1
                 currentAwait = randWaits[UnityEngine.Random.Range(0, randWaits.Count)];
                 yield return currentAwait;
                 if (!registered) yield break;
+
+                // if threshold has changed update awaits now
+                float newMin;
+                float newMax;
+                (newMin, newMax) = ThresholdUtils.Evaluate(thresholdConfig.PIFrequency, NetworkSingleton<TimeManager>.Instance.ElapsedDays);
+                if (newMin != minWait || newMax != maxWait)
+                {
+                    randWaits.Clear();
+                    for (int i = 0; i < 3; i++)
+                        randWaits.Add(new WaitForSeconds(UnityEngine.Random.Range(newMin, newMax)));
+                }
+
                 Log("PI Evaluate");
-                Player[] players = UnityEngine.Object.FindObjectsOfType<Player>(true);
 
-                if (players.Length == 0)
-                    continue;
-
-                EDay currentDay = TimeManager.Instance.CurrentDay;
+                EDay currentDay = NetworkSingleton<TimeManager>.Instance.CurrentDay;
                 if (currentDay.ToString().Contains("Saturday") || currentDay.ToString().Contains("Sunday"))
                     continue;
 
@@ -76,248 +86,284 @@ namespace NACopsV1
                 currentPICount += 1;
                 Log("PI Proceed");
 
-                Player randomPlayer = players[UnityEngine.Random.Range(0, players.Length)];
+                coros.Add(MelonCoroutines.Start(HandlePIMonitor()));
+            }
+        }
 
-                NetworkObject copNet = UnityEngine.Object.Instantiate<NetworkObject>(policeBase);
-                NPC myNpc = copNet.gameObject.GetComponent<NPC>();
-                NavMeshAgent nav = copNet.GetComponent<UnityEngine.AI.NavMeshAgent>();
-                if (nav != null && nav.enabled == false) nav.enabled = true;
+        public static IEnumerator HandlePIMonitor()
+        {
+            Player randomPlayer = Player.Local; // todo network?
 
-                myNpc.ID = $"NACop_{Guid.NewGuid()}";
-                myNpc.FirstName = $"NACop_{Guid.NewGuid()}";
-                myNpc.LastName = "";
-                myNpc.transform.parent = NPCManager.Instance.NPCContainer;
+            PoliceOfficer offc = SpawnOfficerRuntime(false);
+            offc.Behaviour.ScheduleManager.DisableSchedule();
+            offc.Movement.PauseMovement();
+            offc.Movement.Warp(Singleton<Map>.Instance.PoliceStation.Doors[0].AccessPoint);
+            currentSummoned.Add(offc);
+            offc.Movement.SpeedController.AddSpeedControl(new NPCSpeedController.SpeedControl("combat", 5, 0.55f));
+            offc.ChatterEnabled = false;
+            coros.Add(MelonCoroutines.Start(PIAvatar(offc)));
 
-                NPCManager.NPCRegistry.Add(myNpc);
-                yield return Wait01;
-                networkManager.ServerManager.Spawn(copNet);
-                copNet.gameObject.SetActive(true);
-                PoliceOfficer offc = copNet.gameObject.GetComponent<PoliceOfficer>();
-                currentSummoned.Add(offc);
-                offc.FootPatrolBehaviour.Enable_Networked();
-                offc.Movement.WalkSpeed = 5f;
-                offc.Movement.RunSpeed = 8f;
+            yield return AttemptWarp(offc, randomPlayer.CenterPointTransform);
+            offc.Movement.ResumeMovement();
 
-                coros.Add(MelonCoroutines.Start(PIAvatar(offc)));
+            float elapsed = 0f;
+            int proximityDelta = 0;
+            int sightedAmount = 0;
+            float maxWarpCd = 15f;
+            float lastWarp = 0f;
+            bool sightableDisabled = false;
+            bool canSeePlayerCurrently = false;
+            // if open carry weapons is enabled then must prevent brandishing from triggering
+            if (currentConfig.NoOpenCarryWeapons)
+                offc.Awareness.VisionCone.SetSightableStateEnabled(randomPlayer.GetComponent<ISightable>(), EVisualState.Brandishing, false);
 
-                Vector3 warpInit = Vector3.zero;
-                int maxWarpAttempts = 14;
-                for (int i = 0; i < maxWarpAttempts; i++)
+            // str propertycode , int investigation Delta in prperty
+            Dictionary<string, int> sightedProperties = new();
+            for (; ; )
+            {
+
+                yield return Wait5;
+                if (!registered) yield break;
+
+                float distance = Vector3.Distance(offc.transform.position, randomPlayer.transform.position);
+
+                if (!offc.Movement.CanMove() || elapsed >= maxInvestigationTime || randomPlayer.CrimeData.CurrentPursuitLevel != PlayerCrimeData.EPursuitLevel.None)
+                    break;
+
+                elapsed += 5f;
+                lastWarp += 5f;
+
+                // During curfew disable so it doesnt immeaditely set arrested
+                if (NetworkSingleton<TimeManager>.Instance.CurrentTime > 2100 || NetworkSingleton<TimeManager>.Instance.CurrentTime < 0500) 
                 {
-                    float xInitOffset = UnityEngine.Random.Range(8f, 30f);
-                    float zInitOffset = UnityEngine.Random.Range(8f, 30f);
-                    xInitOffset *= UnityEngine.Random.Range(0f, 1f) > 0.5f ? 1f : -1f;
-                    zInitOffset *= UnityEngine.Random.Range(0f, 1f) > 0.5f ? 1f : -1f;
-                    Vector3 targetWarpPosition = randomPlayer.transform.position + new Vector3(xInitOffset, 0f, zInitOffset);
-                    offc.Movement.GetClosestReachablePoint(targetWarpPosition, out warpInit);
-                    if (warpInit != Vector3.zero)
-                    {
-                        yield return Wait01;
-                        offc.Movement.Warp(warpInit);
-                        break;
-                    }
-                    yield return Wait01;
+                    offc.Awareness.VisionCone.SetSightableStateEnabled(randomPlayer.GetComponent<ISightable>(), EVisualState.DisobeyingCurfew, false);
+                    sightableDisabled = true;
                 }
+                else if (sightableDisabled)
+                    offc.Awareness.VisionCone.SetSightableStateEnabled(randomPlayer.GetComponent<ISightable>(), EVisualState.DisobeyingCurfew, true);
 
-                float elapsed = 0f;
-                int investigationDelta = 0;
-                int proximityDelta = 0;
-                int sightedAmount = 0;
-                float maxWarpCd = 30f;
-                float lastWarp = 0f;
-                for (; ; )
+                if (offc.Awareness.VisionCone.enabled && offc.Awareness.VisionCone.IsPlayerVisible(randomPlayer))
                 {
-                    float distance = Vector3.Distance(offc.transform.position, randomPlayer.transform.position);
+                    canSeePlayerCurrently = true;
+                    sightedAmount += 1;
+                }
+                else
+                    canSeePlayerCurrently = false;
 
-                    if (offc.Behaviour.activeBehaviour != null && offc.Behaviour.activeBehaviour.ToString().ToLower().Contains("schedule"))
-                        offc.FootPatrolBehaviour.Enable_Networked();
-
-                    if (!offc.Movement.CanMove() || elapsed >= maxTime || randomPlayer.CrimeData.CurrentPursuitLevel != PlayerCrimeData.EPursuitLevel.None)
-                        break;
-
-                    lastWarp += Time.deltaTime;
-
-                    if (UnityEngine.Random.Range(0f, 1f) >= 0.98f)
-                        offc.PlayVO(EVOLineType.PoliceChatter);
-
-                    if (TimeManager.Instance.CurrentTime > 2100 || TimeManager.Instance.CurrentTime < 0500) // During curfew
-                    {
-                        if (offc.Awareness.VisionCone.VisionEnabled)
-                            offc.Awareness.VisionCone.VisionEnabled = false;
-                        // Based on prog, roll random chance for enable
-                        (float minRang, float maxRang) = ThresholdUtils.Evaluate(ThresholdMappings.PICurfewAttn, TimeManager.Instance.ElapsedDays);
-                        if (UnityEngine.Random.Range(minRang, maxRang) < 0.5f)
-                            offc.Awareness.VisionCone.VisionEnabled = true;
-                    }
-                    else if (!offc.Awareness.VisionCone.VisionEnabled)
-                        offc.Awareness.VisionCone.VisionEnabled = true;
-
-                    if (offc.Awareness.VisionCone.VisionEnabled && offc.Awareness.VisionCone.IsPlayerVisible(randomPlayer))
-                        sightedAmount += 1;
-
-                    if (offc.Movement.CanGetTo(randomPlayer.transform.position, proximityReq: 100f) && distance >= 90f && distance < 140)
-                    {
-                        Log("PI Warp - dist " + distance);
-                        if (lastWarp < maxWarpCd) continue;
-
-                        coros.Add(MelonCoroutines.Start(AttemptWarp(offc, randomPlayer.transform)));
-                        lastWarp = 0f;
-                    }
-                    else if (offc.Movement.CanGetTo(randomPlayer.transform.position, proximityReq: 100f) && distance >= 25f && distance < 140)
+                if (offc.Movement.CanGetTo(randomPlayer.transform.position, proximityReq: 100f) && distance >= 90f && distance < 150f)
+                {
+                    Log("PI Should Warp - dist " + distance);
+                    if (lastWarp < maxWarpCd) continue;
+                    Log("PI Try Warp - dist " + distance);
+                    offc.Movement.PauseMovement();
+                    yield return AttemptWarp(offc, randomPlayer.CenterPointTransform);
+                    offc.Movement.ResumeMovement();
+                    Log("PI New dist " + distance);
+                    lastWarp = 0f;
+                }
+                else if (offc.Movement.CanGetTo(randomPlayer.transform.position, proximityReq: 100f) && distance >= 25f && distance < 110f)
+                {
+                    Vector3 targetPosition = SampleNearby(randomPlayer.CenterPointTransform.position);
+                    offc.Movement.GetClosestReachablePoint(targetPosition, out Vector3 pos);
+                    if (pos == Vector3.zero) continue;
+                    // At larger distances disregard the sight, simply travel
+                    if (distance > 55f)
                     {
                         Log("PI Traverse - dist " + distance);
-
                         if (offc.Movement.IsPaused)
                             offc.Movement.ResumeMovement();
-                        float xOffset = UnityEngine.Random.Range(6f, 24f);
-                        float zOffset = UnityEngine.Random.Range(6f, 24f);
-                        xOffset *= UnityEngine.Random.Range(0f, 1f) > 0.5f ? 1f : -1f;
-                        zOffset *= UnityEngine.Random.Range(0f, 1f) > 0.5f ? 1f : -1f;
-
-                        Vector3 targetPosition = randomPlayer.transform.position + new Vector3(xOffset, 0f, zOffset);
-                        offc.Movement.GetClosestReachablePoint(targetPosition, out Vector3 pos);
-                        if (pos != Vector3.zero && Vector3.Distance(pos, randomPlayer.transform.position) < distance)
-                            offc.Behaviour.activeBehaviour.SetDestination(pos);
+                        offc.Movement.SetDestination(pos);
+                        continue;
                     }
-                    else if (offc.Movement.CanGetTo(randomPlayer.transform.position, proximityReq: 100f) && distance <= 25f)
+                    // pos is valid for monitoring
+                    float newDistance = Vector3.Distance(pos, randomPlayer.CenterPointTransform.position);
+                    bool canSee = CanSeeFromPosition(pos, randomPlayer.CenterPointTransform.position, newDistance);
+                    // If the player was not visible and
+                    // the new proposed locations distance to player is smaller than current distance to player
+                    // OR
+                    // the new proposed location has guaranteed sightline to player
+                    if ((!canSeePlayerCurrently && newDistance < distance) || canSee)
                     {
-                        Log("PI Monitoring");
+                        Log($"PI Traversing Better Distance:{(!canSeePlayerCurrently && newDistance < distance)} | Can See:{canSee}");
+                        if (offc.Movement.IsPaused)
+                            offc.Movement.ResumeMovement();
+                        offc.Movement.SetDestination(pos);
+                    }
+                }
+                else if (offc.Movement.CanGetTo(randomPlayer.transform.position, proximityReq: 100f) && distance <= 25f)
+                {
+                    Log("PI Monitoring");
+                    // If player is visible or random player is in property or distance small enough
+                    // pause movement while nearby. Should allow it to get closer to player and relocate for sightline.
+                    if (canSeePlayerCurrently || randomPlayer.CurrentProperty != null || distance <= 15f)
                         if (!offc.Movement.IsPaused)
                             offc.Movement.PauseMovement();
-                        offc.Movement.FacePoint(randomPlayer.transform.position, lerpTime: 0.9f);
 
-                        if (UnityEngine.Random.Range(0f, 1f) > 0.95f)
-                            coros.Add(MelonCoroutines.Start(GiveFalseCharges(severity: 1, player: randomPlayer)));
+                    offc.Movement.FacePoint(randomPlayer.transform.position, lerpTime: 0.3f);
 
-                        proximityDelta += 1;
-                        if (randomPlayer.CurrentProperty != null && UnityEngine.Random.Range(0f, 1f) > 0.1f && randomPlayer.CurrentProperty.PropertyName == "Docks Warehouse")
-                            investigationDelta += 1;
-                    }
-                    else
+                    if (UnityEngine.Random.Range(0f, 1f) > 0.95f)
+                        coros.Add(MelonCoroutines.Start(GiveFalseCharges(severity: 1, player: randomPlayer)));
+
+                    proximityDelta += 1;
+                    if (randomPlayer.CurrentProperty != null)
                     {
-                        Log("PI Exit condition");
-                        break;
+                        if (sightedProperties.ContainsKey(randomPlayer.CurrentProperty.PropertyCode))
+                            sightedProperties[randomPlayer.CurrentProperty.PropertyCode]++;
+                        else
+                            sightedProperties.Add(key: randomPlayer.CurrentProperty.PropertyCode, value: 1);
                     }
 
-                    yield return Wait5;
-                    if (!registered) yield break;
-                    elapsed += 5f;
+                    // If player not in building OR 20% chance (while player in building to relocate)
+                    // check if a random position would have smaller distance OR Vision to target (If in building, never vision only distance)
+                    if (!canSeePlayerCurrently && (randomPlayer.CurrentProperty == null || UnityEngine.Random.Range(0f, 1f) > 0.8f))
+                    {
+                        Vector3 targetPosition = SampleNearby(randomPlayer.CenterPointTransform.position);
+                        offc.Movement.GetClosestReachablePoint(targetPosition, out Vector3 pos);
+                        if (pos == Vector3.zero) continue;
+
+                        float newDistance = Vector3.Distance(pos, randomPlayer.CenterPointTransform.position);
+                        bool canSee = CanSeeFromPosition(pos, randomPlayer.CenterPointTransform.position, newDistance);
+                        if (newDistance < distance || canSee)
+                        {
+                            Log($"PI Traversing Better Distance:{newDistance < distance} | Can See:{canSee}");
+                            if (offc.Movement.IsPaused)
+                                offc.Movement.ResumeMovement();
+                            offc.Movement.SetDestination(pos);
+                        }
+                    }
                 }
-
-                // Evaluate result, if 40 sec spent observing in docks, and player still in property add 6-8
-                if (investigationDelta >= 8 && randomPlayer.CurrentProperty != null && randomPlayer.CurrentProperty.PropertyName == "Docks Warehouse" && sightedAmount >= 1)
-                    sessionPropertyHeat += UnityEngine.Random.Range(6, 9);
-                // else if player spent major amount of time inside warehouse, not in any property, and PI has sighted twice outside, add 1-3
-                else if (investigationDelta >= 12 && randomPlayer.CurrentProperty == null && sightedAmount > 2)
-                    sessionPropertyHeat += UnityEngine.Random.Range(1, 4);
-                // else if the property heat is high enough, PI was alive for atleast 1min, player was nearby atleast 4 times and was sighted atleast once, reduce 1-3
-                else if (sessionPropertyHeat > 3 && elapsed > 60f && proximityDelta > 4 && sightedAmount >= 1)
-                    sessionPropertyHeat -= UnityEngine.Random.Range(1, 4);
-
-                Log("PI Finished");
-                Log("Investigation delta: " + investigationDelta);
-                Log("Sighted amnt: " + sightedAmount);
-                Log("Proximity delta: " + proximityDelta);
-                Log("Session Heat ->" + sessionPropertyHeat);
-                try
+                else
                 {
-                    if (currentSummoned.Contains(offc))
-                        currentSummoned.Remove(offc);
-                    currentPICount -= 1;
-                    NPC npc = offc.gameObject.GetComponent<NPC>();
-                    if (npc != null && NPCManager.NPCRegistry.Contains(npc))
-                        NPCManager.NPCRegistry.Remove(npc);
-                    if (npc != null && npc.gameObject != null)
-                        UnityEngine.Object.Destroy(npc.gameObject);
+                    Log("PI Exit condition");
+                    break;
                 }
-                catch (Exception ex)
-                {
-                    MelonLogger.Error(ex);
-                }
-
             }
 
+            if (sightedProperties.Count > 0)
+            {
+                lock (heatConfigLock)
+                {
+                    foreach (PropertyHeat propHeat in heatConfig)
+                    {
+                        if (sightedProperties.ContainsKey(propHeat.propertyCode))
+                        {
+                            int investigationDelta = sightedProperties[propHeat.propertyCode];
+
+                            // If player spent major time in building and was sighted outside atleast once
+                            // And is still inside the same building at the end
+                            if (investigationDelta >= 12 && randomPlayer.CurrentProperty != null && randomPlayer.CurrentProperty.PropertyCode == propHeat.propertyCode && sightedAmount >= 1)
+                            {
+                                Log("Property heat increased majorly");
+                                propHeat.propertyHeat += UnityEngine.Random.Range(6, 9);
+                            }
+
+                            // else if player spent time inside, not in any property at end
+                            // and PI has sighted twice outside
+                            else if (investigationDelta >= 4 && randomPlayer.CurrentProperty == null && sightedAmount >= 5)
+                            {
+                                propHeat.propertyHeat += UnityEngine.Random.Range(4, 6);
+                                Log("Property heat increased");
+                            }
+
+                            // else if the property heat is low enough,
+                            // Player was nearby in property atleast twice,
+                            // And player was sighted atleast 10 times
+                            else if (propHeat.propertyHeat < 8 && investigationDelta >= 2 && sightedAmount >= 10)
+                            {
+                                propHeat.propertyHeat += UnityEngine.Random.Range(2, 4);
+                                Log("Property heat increased");
+                            }
+
+                            // else if the property heat is high enough, PI was alive for atleast 1min, player was nearby atleast 4 times 
+                            else if (propHeat.propertyHeat > 5 && elapsed > 60f && proximityDelta > 4)
+                            {
+                                propHeat.propertyHeat -= UnityEngine.Random.Range(1, 5);
+                                Log("Property heat decreased");
+                            }
+                        }
+                    }
+
+                }
+            }
+
+
+            Log("PI Finished");
+            Log("Sighted amnt: " + sightedAmount);
+            Log("Proximity delta: " + proximityDelta);
+
+            Log("Investigation:");
+            foreach (KeyValuePair<string, int> kvp in sightedProperties)
+            {
+                Log($"{kvp.Key} - {kvp.Value}");
+            }
+
+            if (!(offc.Health.IsDead || offc.Health.IsKnockedOut))
+            {
+                // if active beh is combat
+                if (offc.Behaviour.activeBehaviour != null && (offc.Behaviour.activeBehaviour == offc.Behaviour.CombatBehaviour || offc.Behaviour.activeBehaviour == offc.PursuitBehaviour))
+                {
+                    offc.PursuitBehaviour.EndCombat();
+                }
+            }
+
+            if (offc.Movement.CanMove())
+            {
+                offc.Movement.SpeedController.AddSpeedControl(new NPCSpeedController.SpeedControl("combat", 5, 0.85f));
+                offc.Movement.SetDestination(PoliceStation.PoliceStations[0].Doors[0].AccessPoint);
+            }
+
+            yield return Wait30;
+            Log("Despawning PI");
+            try
+            {
+                if (currentSummoned.Contains(offc))
+                    currentSummoned.Remove(offc);
+                currentPICount -= 1;
+                NPC npc = offc.gameObject.GetComponent<NPC>();
+                if (npc != null && NPCManager.NPCRegistry.Contains(npc))
+                    NPCManager.NPCRegistry.Remove(npc);
+                if (npc != null && npc.gameObject != null)
+                    UnityEngine.Object.Destroy(npc.gameObject);
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Error(ex);
+            }
         }
 
-        public static IEnumerator PIAvatar(PoliceOfficer offc)
+        public static bool CanSeeFromPosition(Vector3 pos, Vector3 target, float distance)
         {
-            var originalBodySettings = offc.Avatar.CurrentSettings.BodyLayerSettings;
-#if MONO
-            List<LayerSetting> bodySettings = new();
-#else
-            Il2CppSystem.Collections.Generic.List<LayerSetting> bodySettings = new();
-#endif
-            foreach (var layer in originalBodySettings)
+            Vector3 origin = pos + Vector3.up * 1.75f; // so its not at the feet level
+            Vector3 direction = target - origin;
+            RaycastHit hit;
+            if (Physics.Raycast(origin, direction.normalized, out hit, distance + 2f))
             {
-                bodySettings.Add(new LayerSetting
+                if ((obstacleLayerMask & 1 << hit.collider.gameObject.layer) != 0)
                 {
-                    layerPath = layer.layerPath,
-                    layerTint = layer.layerTint
-                });
-            }
-
-            var originalAccessorySettings = offc.Avatar.CurrentSettings.AccessorySettings;
-#if MONO
-            List<AccessorySetting> accessorySettings = new();
-#else
-            Il2CppSystem.Collections.Generic.List<AccessorySetting> accessorySettings = new();
-#endif
-            foreach (var acc in originalAccessorySettings)
-            {
-                accessorySettings.Add(new AccessorySetting
+                    Log("New Destination cannot see");
+                    return false;
+                }
+                else if (hit.collider.gameObject.layer == playerLayer)
                 {
-                    path = acc.path,
-                    color = acc.color
-                });
+                    Log("New Destination can see");
+                    return true;
+                }
             }
-
-            for (int i = 0; i < bodySettings.Count; i++)
+            else
             {
-                var layer = bodySettings[i];
-                layer.layerPath = "";
-                layer.layerTint = Color.white;
-                bodySettings[i] = layer;
+                Log("No Raycast hits for sightline check");
             }
-
-            for (int i = 0; i < accessorySettings.Count; i++)
-            {
-                var acc = accessorySettings[i];
-                acc.path = "";
-                acc.color = Color.white;
-                accessorySettings[i] = acc;
-            }
-
-            var jeans = bodySettings[2];
-            jeans.layerPath = "Avatar/Layers/Bottom/Jeans";
-            jeans.layerTint = new Color(0.396f, 0.396f, 0.396f);
-            bodySettings[2] = jeans;
-            var shirt = bodySettings[3];
-            shirt.layerPath = "Avatar/Layers/Top/RolledButtonUp";
-            shirt.layerTint = new Color(0.326f, 0.578f, 0.896f);
-            bodySettings[3] = shirt;
-
-            var cap = accessorySettings[0];
-            cap.path = "Avatar/Accessories/Head/Cap/Cap";
-            cap.color = new Color(0.613f, 0.493f, 0.344f);
-            accessorySettings[0] = cap;
-            var blazer = accessorySettings[1];
-            blazer.path = "Avatar/Accessories/Chest/Blazer/Blazer";
-            blazer.color = new Color(0.613f, 0.493f, 0.344f);
-            accessorySettings[1] = blazer;
-            var sneakers = accessorySettings[2];
-            sneakers.path = "Avatar/Accessories/Feet/Sneakers/Sneakers";
-            sneakers.color = new Color(0.151f, 0.151f, 0.151f);
-            accessorySettings[2] = sneakers;
-
-            offc.Avatar.CurrentSettings.BodyLayerSettings = bodySettings;
-            offc.Avatar.CurrentSettings.AccessorySettings = accessorySettings;
-            offc.Avatar.ApplyBodyLayerSettings(offc.Avatar.CurrentSettings);
-            offc.Avatar.ApplyAccessorySettings(offc.Avatar.CurrentSettings);
-            if (offc.Avatar.onSettingsLoaded != null)
-                offc.Avatar.onSettingsLoaded.Invoke();
-
-            yield return null;
+            return false;
         }
 
+        public static Vector3 SampleNearby(Vector3 target)
+        {
+            float xOffset = UnityEngine.Random.Range(6f, 24f);
+            float zOffset = UnityEngine.Random.Range(6f, 24f);
+            xOffset *= UnityEngine.Random.Range(0f, 1f) > 0.5f ? 1f : -1f;
+            zOffset *= UnityEngine.Random.Range(0f, 1f) > 0.5f ? 1f : -1f;
+            return target + new Vector3(xOffset, 0f, zOffset);
+        }
     }
+
 }

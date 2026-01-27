@@ -1,6 +1,5 @@
 namespace NACopsV1
 {
-
     #region Utils for progression
     [Serializable]
     public class MinMaxThreshold

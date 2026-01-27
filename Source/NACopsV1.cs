@@ -16,6 +16,7 @@ using static NACopsV1.DebugModule;
 using static NACopsV1.NoticeOpenCarry;
 using static NACopsV1.RacistOfficers;
 using static NACopsV1.RaidPropertyEvent;
+using static NACopsV1.RuntimeImpostor;
 
 #if MONO
 using ScheduleOne.Law;
@@ -45,35 +46,6 @@ using Il2CppFishNet.Object;
 [assembly: MelonColor()]
 [assembly: MelonOptionalDependencies("FishNet.Runtime")]
 [assembly: MelonGame("TVGS", "Schedule I")]
-
-/*
- Todays agenda:
-
- - Ensure that Il2Cpp conversion worked
-- Test again
-
-- Raid -> lock door to prevent cops from entering the apartment immeaditely?
-    -> Bust down the door anim+ logic?
-    --> Disable the default anim for opening doors to avoid overlap
-
-- Cops can raid businesses?
-
-- Cop disguises as customer and tries to deal with pllayer
---> has dealing related behaviour by default?
---> set name + avatar settings identical to customer
----> msg conv manually?
----> Should be detectable (VO emitter radio rarely or conversation differs from usual customer conv)
-
-- Cops busting player hired dealers
---> msg from dealer (i just got busted by the popo)
-
-- New feature: DecreaseStatus : true
----> Decreases pursuit level / crime wanted level overtime to next lower status instead of resetting to None
-
-- Feature to disable question mark from vision events of police
-- Undercover cop cars so driving civ vehs
-
- */
 
 namespace NACopsV1
 {
@@ -233,9 +205,9 @@ namespace NACopsV1
         {
             if (!currentConfig.RaidsEnabled) yield break;
 #if MONO
-            NetworkSingleton<TimeManager>.Instance.onDayPass += OnDayPassEvaluateRaid;
+            NetworkSingleton<TimeManager>.Instance.onSleepEnd += OnDayPassEvaluateRaid;
 #else
-            NetworkSingleton<TimeManager>.Instance.onDayPass += (Il2CppSystem.Action)OnDayPassEvaluateRaid;
+            NetworkSingleton<TimeManager>.Instance.onSleepEnd += (Il2CppSystem.Action)OnDayPassEvaluateRaid;
 #endif
         }
         public static IEnumerator StationInit()
@@ -358,6 +330,15 @@ namespace NACopsV1
             currentPICount = 0;
             HasSetBrandishing = false;
             IsCheckingSlot = false;
+            investigatorObjectIDs.Clear();
+            if (createdTextures.Count > 0)
+            {
+                // Clear investigator avatar impostor textures
+                foreach (Texture2D texture in createdTextures.Values)
+                    if (texture != null)
+                        UnityEngine.Object.Destroy(texture);
+                createdTextures.Clear();
+            }
             heatConfig.Clear();
             ResetRaidEvent();
         }

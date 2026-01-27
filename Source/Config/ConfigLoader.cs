@@ -725,7 +725,7 @@ namespace NACopsV1
         [Serializable] 
         public class RaidConfig
         {
-            public float TraverseToPropertySpeed = 0.55f;
+            public float TraverseToPropertySpeed = 0.47f;
             public float ClearPropertySpeed = 0.38f;
             public int MaxDestroyIters = 4;
             public int RaidCopsCount = 3;

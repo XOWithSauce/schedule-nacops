@@ -1,4 +1,3 @@
-
 using System.Collections;
 using HarmonyLib;
 using UnityEngine;
@@ -13,7 +12,6 @@ using ScheduleOne.NPCs.Behaviour;
 using ScheduleOne.Map;
 using ScheduleOne.NPCs;
 using ScheduleOne.Police;
-using ScheduleOne.UI;
 using FishNet.Object;
 #else
 using Il2CppScheduleOne.AvatarFramework.Equipping;
@@ -21,10 +19,8 @@ using Il2CppScheduleOne.NPCs.Behaviour;
 using Il2CppScheduleOne.Map;
 using Il2CppScheduleOne.NPCs;
 using Il2CppScheduleOne.Police;
-using Il2CppScheduleOne.UI;
 using Il2CppFishNet.Object;
 #endif
-
 
 namespace NACopsV1
 {

@@ -8,6 +8,7 @@ using static NACopsV1.NACops;
 using static NACopsV1.DebugModule;
 using static NACopsV1.OfficerOverrides;
 using static NACopsV1.AvatarUtility;
+using static NACopsV1.RuntimeImpostor;
 
 #if MONO
 using ScheduleOne.GameTime;
@@ -33,6 +34,20 @@ namespace NACopsV1
 {
     public static class PrivateInvestigator
     {
+        public static readonly List<string> randomMaleNames = new()
+        {
+            "James", "William", "David", "Richard", "John", "Robert"
+        };
+        public static readonly List<string> randomFemaleNames = new()
+        {
+            "Jessica", "Susan", "Linda", "Mary"
+        };
+        public static readonly List<EVisualState> disabledVisualStates = new()
+        {
+            EVisualState.Brandishing, EVisualState.DisobeyingCurfew, EVisualState.DrugDealing, EVisualState.Pickpocketing, EVisualState.Suspicious
+        };
+
+
         public static float maxInvestigationTime = 240f;
 
         private static float minWait;
@@ -43,6 +58,9 @@ namespace NACopsV1
 
         private static int playerLayer = -1;
         private static int obstacleLayerMask = -1;
+
+        public static List<int> investigatorObjectIDs = new();
+
         public static IEnumerator RunInvestigator()
         {
             Log("Private Investigator Enabled");
@@ -92,16 +110,17 @@ namespace NACopsV1
 
         public static IEnumerator HandlePIMonitor()
         {
-            Player randomPlayer = Player.Local; // todo network?
+            Player randomPlayer = Player.GetRandomPlayer();
 
             PoliceOfficer offc = SpawnOfficerRuntime(false);
             offc.Behaviour.ScheduleManager.DisableSchedule();
             offc.Movement.PauseMovement();
-            offc.Movement.Warp(Singleton<Map>.Instance.PoliceStation.Doors[0].AccessPoint);
             currentSummoned.Add(offc);
+            investigatorObjectIDs.Add(offc.GetInstanceID());
             offc.Movement.SpeedController.AddSpeedControl(new NPCSpeedController.SpeedControl("combat", 5, 0.55f));
             offc.ChatterEnabled = false;
-            coros.Add(MelonCoroutines.Start(PIAvatar(offc)));
+
+            yield return PIAvatar(offc);
 
             yield return AttemptWarp(offc, randomPlayer.CenterPointTransform);
             offc.Movement.ResumeMovement();
@@ -111,17 +130,59 @@ namespace NACopsV1
             int sightedAmount = 0;
             float maxWarpCd = 15f;
             float lastWarp = 0f;
-            bool sightableDisabled = false;
             bool canSeePlayerCurrently = false;
-            // if open carry weapons is enabled then must prevent brandishing from triggering
-            if (currentConfig.NoOpenCarryWeapons)
-                offc.Awareness.VisionCone.SetSightableStateEnabled(randomPlayer.GetComponent<ISightable>(), EVisualState.Brandishing, false);
+
+            // When the investigator initiates combat
+            // the visual state starts bugging
+            // visual cone needs to be disabled
+            void OnCombatBegun()
+            {
+                offc.Awareness.SetAwarenessActive(false);
+                return;
+            }
+            offc.Behaviour.CombatBehaviour.onBegin.AddListener((UnityEngine.Events.UnityAction)OnCombatBegun);
+
+            // Remove the required visual states
+            offc.Awareness.enabled = false;
+            offc.generalCrimeResponseActive = false;
+#if MONO
+            ISightable sightable = (ISightable)randomPlayer;
+            Dictionary<EVisualState, VisionCone.StateContainer> newStates = new();
+#else
+            ISightable sightable = randomPlayer.TryCast<ISightable>();
+            Il2CppSystem.Collections.Generic.Dictionary<EVisualState, VisionCone.StateContainer> newStates = new();
+#endif
+            if (sightable == null)
+            {
+                Log("Warning sightable is null");
+            }
+            else
+            {
+                if (offc.Awareness.VisionCone.stateSettings.ContainsKey(sightable)) 
+                {
+                    foreach (var kvp in offc.Awareness.VisionCone.stateSettings[sightable])
+                    {
+                        if (disabledVisualStates.Contains(kvp.Key))
+                            continue;
+                        else
+                            newStates.Add(kvp.Key, kvp.Value);
+                    }
+                }
+            }
+            if (newStates.Count == 0)
+            {
+                Log("Something failed while applying visual state modification");
+            }
+            else if (sightable != null)
+            {
+                offc.Awareness.VisionCone.stateSettings[sightable] = newStates;
+            }
+            offc.Awareness.enabled = true;
 
             // str propertycode , int investigation Delta in prperty
             Dictionary<string, int> sightedProperties = new();
             for (; ; )
             {
-
                 yield return Wait5;
                 if (!registered) yield break;
 
@@ -132,15 +193,6 @@ namespace NACopsV1
 
                 elapsed += 5f;
                 lastWarp += 5f;
-
-                // During curfew disable so it doesnt immeaditely set arrested
-                if (NetworkSingleton<TimeManager>.Instance.CurrentTime > 2100 || NetworkSingleton<TimeManager>.Instance.CurrentTime < 0500) 
-                {
-                    offc.Awareness.VisionCone.SetSightableStateEnabled(randomPlayer.GetComponent<ISightable>(), EVisualState.DisobeyingCurfew, false);
-                    sightableDisabled = true;
-                }
-                else if (sightableDisabled)
-                    offc.Awareness.VisionCone.SetSightableStateEnabled(randomPlayer.GetComponent<ISightable>(), EVisualState.DisobeyingCurfew, true);
 
                 if (offc.Awareness.VisionCone.enabled && offc.Awareness.VisionCone.IsPlayerVisible(randomPlayer))
                 {
@@ -251,30 +303,32 @@ namespace NACopsV1
 
                             // If player spent major time in building and was sighted outside atleast once
                             // And is still inside the same building at the end
-                            if (investigationDelta >= 12 && randomPlayer.CurrentProperty != null && randomPlayer.CurrentProperty.PropertyCode == propHeat.propertyCode && sightedAmount >= 1)
+                            if (investigationDelta >= 12 && proximityDelta > 4 && sightedAmount >= 1 && randomPlayer.CurrentProperty != null && randomPlayer.CurrentProperty.PropertyCode == propHeat.propertyCode)
                             {
-                                Log("Property heat increased majorly");
+                                Log("Property heat increased +++");
                                 propHeat.propertyHeat += UnityEngine.Random.Range(6, 9);
                             }
 
-                            // else if player spent time inside, not in any property at end
-                            // and PI has sighted twice outside
-                            else if (investigationDelta >= 4 && randomPlayer.CurrentProperty == null && sightedAmount >= 5)
+                            // else if player spent time inside, and was sighted outside atleast once
+                            // and PI has sighted outside, and is still in the same property
+                            else if (investigationDelta >= 6 && proximityDelta > 2 && sightedAmount >= 1 && randomPlayer.CurrentProperty != null && randomPlayer.CurrentProperty.PropertyCode == propHeat.propertyCode)
                             {
                                 propHeat.propertyHeat += UnityEngine.Random.Range(4, 6);
-                                Log("Property heat increased");
+                                Log("Property heat increased ++");
                             }
 
                             // else if the property heat is low enough,
                             // Player was nearby in property atleast twice,
-                            // And player was sighted atleast 10 times
-                            else if (propHeat.propertyHeat < 8 && investigationDelta >= 2 && sightedAmount >= 10)
+                            // And player was sighted atleast 2 times
+                            else if (propHeat.propertyHeat < 8 && investigationDelta >= 3 && proximityDelta >= 2 && sightedAmount >= 2)
                             {
                                 propHeat.propertyHeat += UnityEngine.Random.Range(2, 4);
-                                Log("Property heat increased");
+                                Log("Property heat increased +");
                             }
 
                             // else if the property heat is high enough, PI was alive for atleast 1min, player was nearby atleast 4 times 
+                            // so the meta is to not be sighted by the PI if you were inside a building
+                            // or kill the PI after 1min?
                             else if (propHeat.propertyHeat > 5 && elapsed > 60f && proximityDelta > 4)
                             {
                                 propHeat.propertyHeat -= UnityEngine.Random.Range(1, 5);
@@ -294,28 +348,40 @@ namespace NACopsV1
             Log("Investigation:");
             foreach (KeyValuePair<string, int> kvp in sightedProperties)
             {
-                Log($"{kvp.Key} - {kvp.Value}");
+                Log($"{kvp.Key} - Investigation delta: {kvp.Value}");
             }
 
             if (!(offc.Health.IsDead || offc.Health.IsKnockedOut))
             {
+                if (offc.Awareness.VisionCone.enabled)
+                    offc.Awareness.SetAwarenessActive(false);
+
                 // if active beh is combat
                 if (offc.Behaviour.activeBehaviour != null && (offc.Behaviour.activeBehaviour == offc.Behaviour.CombatBehaviour || offc.Behaviour.activeBehaviour == offc.PursuitBehaviour))
                 {
-                    offc.PursuitBehaviour.EndCombat();
+                    offc.PursuitBehaviour.Disable();
                 }
-            }
 
-            if (offc.Movement.CanMove())
-            {
                 offc.Movement.SpeedController.AddSpeedControl(new NPCSpeedController.SpeedControl("combat", 5, 0.85f));
                 offc.Movement.SetDestination(PoliceStation.PoliceStations[0].Doors[0].AccessPoint);
+                if (offc.Movement.IsPaused)
+                    offc.Movement.ResumeMovement();
             }
 
             yield return Wait30;
+            if (!registered) yield break;
             Log("Despawning PI");
             try
             {
+                // If impostor texture exists destroy texture
+                int id = offc.GetInstanceID();
+                if (createdTextures.ContainsKey(id))
+                {
+                    if (createdTextures[id] != null)
+                        UnityEngine.Object.Destroy(createdTextures[id]);
+                    createdTextures.Remove(id);
+                }
+
                 if (currentSummoned.Contains(offc))
                     currentSummoned.Remove(offc);
                 currentPICount -= 1;
@@ -324,6 +390,7 @@ namespace NACopsV1
                     NPCManager.NPCRegistry.Remove(npc);
                 if (npc != null && npc.gameObject != null)
                     UnityEngine.Object.Destroy(npc.gameObject);
+                
             }
             catch (Exception ex)
             {

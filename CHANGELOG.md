@@ -1,5 +1,6 @@
 # Version 2.0.0
 - Added Property Raids feature that allows cops to destroy your properties and steal illegal products. Raids can be configured in raid.json.
+  - Raids start after sleeping through the night, in the morning if investigator has built up enough property heat and property hasnt been raided recently
 - Added Property Heat system that allows the Property Raids to happen. Private Investigator builds up heat. Heat data is saved in NACops/HeatData/(organisation name).json
 - Added new Racist Cops feature where cops really just dont like black people
 - Added new No Open Carry Weapons feature that makes guns illegal to carry in hand and in containers
@@ -11,7 +12,7 @@
 - Added Configuration support for the Frequencies, Ranges and Probabilities of certain events (now in progression.json)
   - Configuration scales difficulty against Days Played, Networth & Customer relationships (more in readme)
 - Added support for Random Avatar generation for officers. 
-  - Now Private Investigator uses Custom random avatar.
+  - Now Private Investigator uses Custom random avatar, clothing and name
   - Cops added by the mod config (officers.json ModAddedOfficersCount) get also custom random avatar
 - Added support for using Console commands for NACops features, spawning visuals for the police patrols and building new routes using commands
 - Added Shrooms to the WeedInvestigator feature so now cops will try to search for player consuming it

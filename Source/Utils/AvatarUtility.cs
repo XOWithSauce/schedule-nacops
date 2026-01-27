@@ -2,6 +2,10 @@
 using System.Collections;
 using UnityEngine;
 
+using static NACopsV1.PrivateInvestigator;
+using static NACopsV1.RuntimeImpostor;
+using static NACopsV1.NACops;
+
 #if MONO
 using ScheduleOne.AvatarFramework;
 using ScheduleOne.Police;
@@ -100,7 +104,7 @@ namespace NACopsV1
             face0.layerTint = new Color(0f, 0f, 0f, 1f);
             faceSettings[0] = face0;
 
-            newSettings.Gender = UnityEngine.Random.Range(0f, 0.65f);
+            newSettings.Gender = UnityEngine.Random.Range(0f, 0.70f);
 
             if (UnityEngine.Random.Range(0f, 1f) > 0.6f && newSettings.Gender < 0.5f)
             {
@@ -213,8 +217,10 @@ namespace NACopsV1
             List<Color> palette = PIColorPalettes[UnityEngine.Random.Range(0, PIColorPalettes.Count)];
             newSettings.FaceLayerSettings = SetRandomLook(newSettings);
 
-            if (newSettings.Gender > 0.5f && UnityEngine.Random.Range(0f, 1f) > 0.8f)
+            bool hasSkirt = false;
+            if (newSettings.Gender > 0.5f && UnityEngine.Random.Range(0f, 1f) > 0.3f)
             {
+                hasSkirt = true;
                 var skirt = bodySettings[2];
                 skirt.layerPath = "Avatar/Accessories/Bottom/MediumSkirt/MediumSkirt";
                 skirt.layerTint = palette[0];
@@ -243,13 +249,12 @@ namespace NACopsV1
                 bodySettings[3] = shirt;
             }
                 
-
             var sneakers = accessorySettings[0];
             sneakers.path = "Avatar/Accessories/Feet/Sneakers/Sneakers";
             sneakers.color = palette[2];
             accessorySettings[0] = sneakers;
 
-            if (UnityEngine.Random.Range(0f, 1f) > 0.5f)
+            if (UnityEngine.Random.Range(0f, 1f) > 0.3f && !hasSkirt)
             {
                 var blazer = accessorySettings[2];
                 blazer.path = "Avatar/Accessories/Chest/Blazer/Blazer";
@@ -264,12 +269,13 @@ namespace NACopsV1
                 cap.color = palette[4];
                 accessorySettings[3] = cap;
             }
-            else if (UnityEngine.Random.Range(0f, 1f) > 0.5f)
+            else if (UnityEngine.Random.Range(0f, 1f) > 0.90f && newSettings.Gender < 0.5f)
             {
                 var beanie = accessorySettings[3];
                 beanie.path = "Avatar/Accessories/Head/Beanie/Beanie";
                 beanie.color = palette[4];
                 accessorySettings[3] = beanie;
+                newSettings.HairPath = "";
             }
 
 
@@ -285,6 +291,31 @@ namespace NACopsV1
             newSettings.BodyLayerSettings = bodySettings;
 
             offc.Avatar.LoadAvatarSettings(newSettings);
+
+            offc.FirstName = newSettings.Gender < 0.5f ? randomMaleNames[UnityEngine.Random.Range(0, randomMaleNames.Count)] : randomFemaleNames[UnityEngine.Random.Range(0, randomFemaleNames.Count)];
+
+            // Because the default impostor show the npc being a cop generate new impostor from these settings
+
+            offc.Movement.Agent.enabled = false;
+            offc.Movement.enabled = false;
+            Vector3 origPos = offc.transform.position;
+            Quaternion origRot = offc.transform.rotation;
+            offc.transform.SetPositionAndRotation(targetPosition, Quaternion.Euler(targetRotationEuler));
+            offc.Avatar.Animation.SetGrounded(true);
+            offc.Avatar.Animation.enabled = false;
+            yield return Wait01;
+            offc.Avatar.BodyContainer.gameObject.SetActive(true);
+            yield return Wait1;
+            Texture2D tex = CreateImpostor(offc);
+
+            offc.transform.SetPositionAndRotation(origPos, origRot);
+            offc.Avatar.BodyContainer.gameObject.SetActive(false);
+            offc.Avatar.Animation.enabled = true;
+            offc.Movement.Agent.enabled = true;
+            offc.Movement.enabled = true;
+
+            newSettings.ImpostorTexture = tex;
+            offc.Avatar.Impostor.SetAvatarSettings(newSettings);
             yield return null;
         }
 

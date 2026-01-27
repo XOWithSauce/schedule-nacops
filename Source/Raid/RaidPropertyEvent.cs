@@ -8,7 +8,6 @@ using static NACopsV1.NACops;
 using static NACopsV1.OfficerOverrides;
 using static NACopsV1.AvatarUtility;
 
-
 #if MONO
 using ScheduleOne.Vision;
 using ScheduleOne.PlayerScripts;
@@ -16,6 +15,7 @@ using ScheduleOne.Employees;
 using ScheduleOne.AvatarFramework.Equipping;
 using ScheduleOne.DevUtilities;
 using ScheduleOne.EntityFramework;
+using ScheduleOne.Persistence;
 using ScheduleOne.ItemFramework;
 using ScheduleOne.Management;
 using ScheduleOne.Map;
@@ -26,6 +26,7 @@ using ScheduleOne.VoiceOver;
 using ScheduleOne.Police;
 using ScheduleOne.Property;
 using ScheduleOne.Storage;
+using ScheduleOne.NPCs.Behaviour;
 using TMPro;
 #else
 using Il2CppScheduleOne.Vision;
@@ -34,6 +35,7 @@ using Il2CppScheduleOne.Employees;
 using Il2CppScheduleOne.AvatarFramework.Equipping;
 using Il2CppScheduleOne.DevUtilities;
 using Il2CppScheduleOne.EntityFramework;
+using Il2CppScheduleOne.Persistence;
 using Il2CppScheduleOne.ItemFramework;
 using Il2CppScheduleOne.Management;
 using Il2CppScheduleOne.Map;
@@ -44,6 +46,7 @@ using Il2CppScheduleOne.VoiceOver;
 using Il2CppScheduleOne.Police;
 using Il2CppScheduleOne.Property;
 using Il2CppScheduleOne.Storage;
+using Il2CppScheduleOne.NPCs.Behaviour;
 using Il2CppTMPro;
 using Il2CppInterop.Runtime;
 #endif
@@ -52,12 +55,18 @@ namespace NACopsV1
 {
     public static class RaidPropertyEvent 
     {
+        public static readonly List<EVisualState> disabledVisualStates = new()
+        {
+            EVisualState.Suspicious 
+        };
+
         public static readonly int maxSearchAttempts = 8; // Search from buildable items attempts
         public static readonly int maxActionIters = 12; // for each time the role tries to start action
         public static Sprite m1911Sprite;
         public static Sprite homeSprite;
 
         public static Slider raidSlider;
+        public static TextMeshProUGUI raidText;
         public static RectTransform fillRt;
         public static RectTransform handleRt;
         public static Image sliderFillImage;
@@ -75,7 +84,6 @@ namespace NACopsV1
         private static bool employeesScared = false;
         private static Dictionary<RaidOfficer, float> distancesToProperty = new();
 
-
         // Ensure no 2 raiders pick the same item for destruction
         private static object toBeDestroyedLock = new object();
         // Hashset instance id
@@ -92,7 +100,7 @@ namespace NACopsV1
         }
         public enum ERaidDestroyType
         {
-            None, DestroyPot, DestroyShroomBed, DestroyDryingRack, DestroyLabOven, DestroyChemistryStation, DestroyCauldron
+            None, DestroyPot, DestroyShroomBed, DestroyDryingRack, DestroyLabOven, DestroyChemistryStation, DestroyCauldron, DestroyMixing
         }
 
         public static readonly List<string> raidOfficerLines = new()
@@ -124,18 +132,20 @@ namespace NACopsV1
         public static IEnumerator WaitDayPass()
         {
             yield return Wait5;
-
+            if (!registered) yield break;
 #if MONO
-            yield return new WaitUntil(() => !isSaving);
+            yield return new WaitUntil(() => !isSaving && !SaveManager.Instance.IsSaving);
 #else
-            yield return new WaitUntil((Il2CppSystem.Func<bool>)(() => !isSaving));
+            yield return new WaitUntil((Il2CppSystem.Func<bool>)(() => !isSaving && !SaveManager.Instance.IsSaving));
 #endif
             if (!registered) yield break;
+            yield return Wait5;
+            if (!registered) yield break;
 
-            Log("DayPass Evaluate Raid");
+            Log("Sleep ended Evaluate Raid");
             List<PropertyHeat> currentHeats;
 
-            lock (heatConfigLock) // Lock during daypass to avoid write read conflict
+            lock (heatConfigLock)
             {
                 foreach (Property property in Property.OwnedProperties)
                 {
@@ -143,8 +153,8 @@ namespace NACopsV1
                     if (heat != null)
                     {
                         heat.daysSinceLastRaid++;
-                        // over 10 heat decreases
-                        if (heat.propertyHeat > 10)
+                        // over 12 heat decreases
+                        if (heat.propertyHeat > 12)
                             heat.propertyHeat--;
                     }
                 }
@@ -190,18 +200,12 @@ namespace NACopsV1
             }
             yield return null;
         }
+
         public static IEnumerator BeginRaidEvent(Property property)
         {
             if (!raidActive)
             {
                 raidActive = true;
-                Log("Begin raid spawn");
-                //Singleton<NotificationsManager>.Instance.SendNotification(
-                //    title: $"{property.propertyName}",
-                //    subtitle: "Raid incoming!",
-                //    icon: m1911Sprite,
-                //    duration: 15f
-                //);
                 SpawnRaidCops(property);
                 yield return Wait1;
                 Log($"Sending raid to {property.propertyName} ({property.propertyCode})");
@@ -226,6 +230,7 @@ namespace NACopsV1
 
             if (resetUI) // Reusable while in scene
             {
+                raidText = null;
                 homeSprite = null;
                 m1911Sprite = null;
                 raidSlider = null;
@@ -266,6 +271,7 @@ namespace NACopsV1
                 offc.Movement.Warp(Singleton<Map>.Instance.PoliceStation.Doors[0].AccessPoint);
                 coros.Add(MelonCoroutines.Start(SetRaiderAvatar(offc)));
                 currentRaidOfficers.Add(raidOfficer);
+               
 
                 offc.Health.MaxHealth = 240f;
                 offc.Health.Health = 240f;
@@ -283,10 +289,43 @@ namespace NACopsV1
 
                 offc.Movement.SpeedController.AddSpeedControl(new NPCSpeedController.SpeedControl("combat", 5, raidConfig.TraverseToPropertySpeed));
 
-                ISightable iSight = Player.Local.GetComponent<ISightable>();
-                offc.Awareness.VisionCone.SetSightableStateEnabled(iSight, EVisualState.DisobeyingCurfew, false);
-                offc.Awareness.VisionCone.SetSightableStateEnabled(iSight, EVisualState.Brandishing, false);
-                offc.Awareness.VisionCone.SetSightableStateEnabled(iSight, EVisualState.Suspicious, false);
+                offc.Awareness.enabled = false;
+                // Remove the required visual states
+                offc.generalCrimeResponseActive = false;
+
+#if MONO
+                ISightable sightable = (ISightable)Player.Local;
+                Dictionary<EVisualState, VisionCone.StateContainer> newStates = new();
+#else
+                ISightable sightable = Player.Local.TryCast<ISightable>();
+                Il2CppSystem.Collections.Generic.Dictionary<EVisualState, VisionCone.StateContainer> newStates = new();
+#endif
+                if (sightable == null)
+                {
+                    Log("Warning sightable is null");
+                }
+                else
+                {
+                    if (offc.Awareness.VisionCone.stateSettings.ContainsKey(sightable))
+                    {
+                        foreach (var kvp in offc.Awareness.VisionCone.stateSettings[sightable])
+                        {
+                            if (disabledVisualStates.Contains(kvp.Key))
+                                continue;
+                            else
+                                newStates.Add(kvp.Key, kvp.Value);
+                        }
+                    }
+                }
+                if (newStates.Count == 0)
+                {
+                    Log("Something failed while applying visual state modification");
+                }
+                else if (sightable != null)
+                {
+                    offc.Awareness.VisionCone.stateSettings[sightable] = newStates;
+                }
+                offc.Awareness.enabled = true;
             }
             AssignRaidOfficerRole(targetProperty);
             raidOfficersAlive = raidConfig.RaidCopsCount;
@@ -485,8 +524,6 @@ namespace NACopsV1
                 yield break;
             employeesScared = true;
 
-            Log("Scaring employees enabled", offc.Name);
-
             yield return Wait5;
             if (!registered || !raidActive) yield break;
 #if MONO
@@ -499,6 +536,7 @@ namespace NACopsV1
             {
                 yield return Wait05;
                 if (!registered) yield break;
+                employee.Behaviour.FleeBehaviour.SetPointToFlee(employee.AssignedProperty.EmployeeIdlePoints[0].position);
                 employee.Behaviour.FleeBehaviour.Activate();
             }
             yield return Wait30;
@@ -508,7 +546,10 @@ namespace NACopsV1
                 yield return Wait05;
                 if (!registered) yield break;
                 if (employee.Behaviour.activeBehaviour != null && employee.Behaviour.activeBehaviour == employee.Behaviour.FleeBehaviour)
+                {
                     employee.Behaviour.FleeBehaviour.Deactivate();
+                    employee.Movement.SetDestination(employee.WaitOutside.IdlePoint);
+                }
             }
 
             yield return null;
@@ -586,7 +627,7 @@ namespace NACopsV1
                     destroyType = ERaidDestroyType.DestroyDryingRack;
                     destroyTarget = GetValidBuildable<DryingRack>(dryingRacks);
                 }
-                else if (pots != null && pots.Count == 0 && shroomBeds != null && shroomBeds.Count == 0 && dryingRacks != null && dryingRacks.Count == 0)
+                else
                 {
                     Log("no selectable item types left", offc.Name);
                     offc.currentActionIter = maxActionIters;
@@ -598,17 +639,27 @@ namespace NACopsV1
             else if (offc.role == EOfficerRaidRole.DestroyLabEquipment)
             {
 #if MONO
+                List<MixingStationMk2> mixingStations = offc.targetProperty.GetBuildablesOfType<MixingStationMk2>();
                 List<LabOven> labOvens = offc.targetProperty.GetBuildablesOfType<LabOven>();
                 List<ChemistryStation> chemStations = offc.targetProperty.GetBuildablesOfType<ChemistryStation>();
                 List<Cauldron> cauldrons = offc.targetProperty.GetBuildablesOfType<Cauldron>();
 #else
+                Il2CppSystem.Collections.Generic.List<MixingStationMk2> mixingStations = offc.targetProperty.GetBuildablesOfType<MixingStationMk2>();
                 Il2CppSystem.Collections.Generic.List<LabOven> labOvens = offc.targetProperty.GetBuildablesOfType<LabOven>();
                 Il2CppSystem.Collections.Generic.List<ChemistryStation> chemStations = offc.targetProperty.GetBuildablesOfType<ChemistryStation>();
                 Il2CppSystem.Collections.Generic.List<Cauldron> cauldrons = offc.targetProperty.GetBuildablesOfType<Cauldron>();
 #endif
 
                 // Selection logic
-                if (labOvens != null && labOvens.Count > 0 && labOvens.Count >= chemStations.Count && labOvens.Count >= cauldrons.Count)
+                // Prefer destroying mixing stations first (most expensive)
+                // Then check based on quantity from lab ovens, chem stations and cauldrons
+                if (mixingStations != null && mixingStations.Count > 0)
+                {
+                    Log("select mixing station mk2", offc.Name);
+                    destroyType = ERaidDestroyType.DestroyMixing;
+                    destroyTarget = GetValidBuildable<MixingStationMk2>(mixingStations);
+                }
+                else if (labOvens != null && labOvens.Count > 0 && labOvens.Count >= chemStations.Count && labOvens.Count >= cauldrons.Count)
                 {
                     Log("select lab ovens", offc.Name);
                     destroyType = ERaidDestroyType.DestroyLabOven;
@@ -626,7 +677,7 @@ namespace NACopsV1
                     destroyType = ERaidDestroyType.DestroyCauldron;
                     destroyTarget = GetValidBuildable<Cauldron>(cauldrons);
                 }
-                else if (labOvens != null && labOvens.Count == 0 && chemStations != null && chemStations.Count == 0 && cauldrons != null && cauldrons.Count == 0)
+                else
                 {
                     Log("no selectable item types left", offc.Name);
                     offc.currentActionIter = maxActionIters;
@@ -685,6 +736,9 @@ namespace NACopsV1
                     break;
                 case ERaidDestroyType.DestroyCauldron: 
                     Casted<Cauldron>(destroyTarget, ((t) => entity = t.GetComponent<ITransitEntity>())); 
+                    break;
+                case ERaidDestroyType.DestroyMixing:
+                    Casted<MixingStationMk2>(destroyTarget, ((t) => entity = t.GetComponent<ITransitEntity>()));
                     break;
                 case ERaidDestroyType.None:
                     Casted<PlaceableStorageEntity>(destroyTarget, ((t) => entity = t.GetComponent<ITransitEntity>()));
@@ -926,6 +980,10 @@ namespace NACopsV1
                     Casted<Cauldron>(destroyTarget, _ => ResetEntityConfig(_.Configuration));
                     break;
 
+                case ERaidDestroyType.DestroyMixing:
+                    Casted<MixingStationMk2>(destroyTarget, _ => ResetEntityConfig(_.Configuration));
+                    break;
+
                 default:
                     break;
             }
@@ -1153,6 +1211,7 @@ namespace NACopsV1
             List<LabOven> labOvens = property.GetBuildablesOfType<LabOven>();
             List<ChemistryStation> chemStations = property.GetBuildablesOfType<ChemistryStation>();
             List<Cauldron> cauldrons = property.GetBuildablesOfType<Cauldron>();
+            List<MixingStationMk2> mixingStations = property.GetBuildablesOfType<MixingStationMk2>();
             List<PlaceableStorageEntity> storage = property.GetBuildablesOfType<PlaceableStorageEntity>();
 #else
             Il2CppSystem.Collections.Generic.List<Pot> pots = property.GetBuildablesOfType<Pot>();
@@ -1161,14 +1220,15 @@ namespace NACopsV1
             Il2CppSystem.Collections.Generic.List<LabOven> labOvens = property.GetBuildablesOfType<LabOven>();
             Il2CppSystem.Collections.Generic.List<ChemistryStation> chemStations = property.GetBuildablesOfType<ChemistryStation>();
             Il2CppSystem.Collections.Generic.List<Cauldron> cauldrons = property.GetBuildablesOfType<Cauldron>();
+            Il2CppSystem.Collections.Generic.List<MixingStationMk2> mixingStations = property.GetBuildablesOfType<MixingStationMk2>();
             Il2CppSystem.Collections.Generic.List<PlaceableStorageEntity> storage = property.GetBuildablesOfType<PlaceableStorageEntity>();
 #endif
             int totalGrow = pots.Count + shroomBeds.Count + dryingRacks.Count;
-            int totalLab = labOvens.Count + chemStations.Count + cauldrons.Count;
+            int totalLab = labOvens.Count + chemStations.Count + cauldrons.Count + mixingStations.Count;
             int totalStorage = storage.Count;
             Log("Total valid raidable in Property: " + (totalGrow + totalLab + totalStorage));
             Log($"GrowTot: {totalGrow} - Pots:{pots.Count}, Shroom:{shroomBeds.Count}, Drying:{dryingRacks.Count}");
-            Log($"LabTot: {totalLab} - Ovens:{labOvens.Count}, Chem:{chemStations.Count}, Cauldron:{cauldrons.Count}");
+            Log($"LabTot: {totalLab} - Ovens:{labOvens.Count}, Chem:{chemStations.Count}, Cauldron:{cauldrons.Count}, Mix: {mixingStations.Count}");
             Log($"Storage: {totalStorage}");
 
             Dictionary<EOfficerRaidRole, int> totalForRole = new()
@@ -1305,17 +1365,17 @@ namespace NACopsV1
                 textTr.offsetMax = new Vector2(300f, 55f);
                 textTr.offsetMin = new Vector2(-300f, 5f);
                 textTr.sizeDelta = new Vector2(600f, 50f);
-                TextMeshProUGUI textComp = newTextObj.GetComponent<TextMeshProUGUI>();
+                raidText = newTextObj.GetComponent<TextMeshProUGUI>();
 
-                textComp.fontSize = 20f;
-                textComp.text = $"The police are raiding {property.PropertyName}!";
-                textComp.alignment = TextAlignmentOptions.Top;
-                textComp.horizontalAlignment = HorizontalAlignmentOptions.Center;
+                raidText.fontSize = 20f;
+                raidText.alignment = TextAlignmentOptions.Top;
+                raidText.horizontalAlignment = HorizontalAlignmentOptions.Center;
             } // Reusable while in scene
 
             raidSlider.value = 1f;
             sliderFillImage.color = Color.white;
-            
+            raidText.text = $"The police are raiding {property.PropertyName}!";
+
             coros.Add(MelonCoroutines.Start(FadeUI(4f, 2.5f, true)));
 
             float originalDistance = Vector3.Distance(currentRaidOfficers[0].officer.CenterPoint, currentRaidOfficers[0].targetProperty.NPCSpawnPoint.position);

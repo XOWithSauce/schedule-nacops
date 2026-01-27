@@ -1,6 +1,3 @@
-
-using static NACopsV1.DebugModule;
-
 #if MONO
 using ScheduleOne.ItemFramework;
 using ScheduleOne.DevUtilities;

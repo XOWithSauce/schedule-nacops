@@ -1,3 +1,4 @@
+
 using System.Collections;
 using HarmonyLib;
 using UnityEngine;
@@ -12,6 +13,7 @@ using ScheduleOne.NPCs.Behaviour;
 using ScheduleOne.Map;
 using ScheduleOne.NPCs;
 using ScheduleOne.Police;
+using ScheduleOne.AvatarFramework.Customization;
 using FishNet.Object;
 #else
 using Il2CppScheduleOne.AvatarFramework.Equipping;
@@ -19,8 +21,10 @@ using Il2CppScheduleOne.NPCs.Behaviour;
 using Il2CppScheduleOne.Map;
 using Il2CppScheduleOne.NPCs;
 using Il2CppScheduleOne.Police;
+using Il2CppScheduleOne.AvatarFramework.Customization;
 using Il2CppFishNet.Object;
 #endif
+
 
 namespace NACopsV1
 {
@@ -91,6 +95,7 @@ namespace NACopsV1
                 station.NPCEnteredBuilding(offc);
                 generatedOfficerPool.Add(offc);
                 PoliceOfficer.Officers.Add(offc);
+                
             }
             station.OfficerPool = generatedOfficerPool;
             yield return null;
@@ -107,10 +112,10 @@ namespace NACopsV1
             myNpc.FirstName = "Officer";
             myNpc.LastName = "";
             myNpc.transform.parent = NPCManager.Instance.NPCContainer;
+
             NPCManager.NPCRegistry.Add(myNpc);
             networkManager.ServerManager.Spawn(copNet);
             copNet.gameObject.SetActive(true);
-
             copNet.name = $"NACops_RuntimeOfficer_{i}";
             return offc;
         }
@@ -122,6 +127,26 @@ namespace NACopsV1
 
         public static IEnumerator SetOfficers()
         {
+            // offc belt is always unassigned on spawned ones 
+            foreach (PoliceOfficer officer in allActiveOfficers)
+            {
+                if (officer.belt != null) continue;
+                for (int j = 0; j < officer.Avatar.appliedAccessories.Length; j++)
+                {
+                    if (officer.Avatar.appliedAccessories[j] == null) continue;
+                    if (officer.Avatar.appliedAccessories[j].AssetPath == "Avatar/Accessories/Waist/PoliceBelt/PoliceBelt")
+                    {
+                        PoliceBelt beltComp = officer.Avatar.appliedAccessories[j].gameObject.GetComponent<PoliceBelt>();
+                        if (beltComp != null)
+                            officer.belt = beltComp;
+                        else
+                            Log("Belt component is null and cant assign");
+                        break;
+                    }
+                }
+            }
+            
+
             Log("Set officers foreach stats for " + allActiveOfficers.Count);
             foreach (PoliceOfficer officer in allActiveOfficers)
             {
@@ -165,9 +190,13 @@ namespace NACopsV1
 
                 if (officerConfig.OverrideWeapon)
                 {
-                    var gun = officer.GunPrefab;
+                    AvatarRangedWeapon rangedWeapon = null;
 #if MONO
-                    if (gun != null && gun is AvatarRangedWeapon rangedWeapon)
+                    rangedWeapon = officer.GunPrefab as AvatarRangedWeapon;
+#else
+                    rangedWeapon = officer.GunPrefab.TryCast<AvatarRangedWeapon>();
+#endif
+                    if (rangedWeapon != null)
                     {
                         rangedWeapon.CanShootWhileMoving = true;
                         rangedWeapon.MagazineSize = officerConfig.WeaponMagSize;
@@ -177,38 +206,16 @@ namespace NACopsV1
                         rangedWeapon.RaiseTime = officerConfig.WeaponRaiseTime;
                         rangedWeapon.HitChance_MaxRange = officerConfig.WeaponHitChanceMax;
                         rangedWeapon.HitChance_MinRange = officerConfig.WeaponHitChanceMin;
+                        rangedWeapon.CooldownDuration = officerConfig.WeaponFireRate;
+                        rangedWeapon.Damage = officerConfig.WeaponDamage;
+                    }
 
+                    if (rangedWeapon != null)
+                    {
                         if (officer.Behaviour.CombatBehaviour.DefaultWeapon == null)
                             officer.Behaviour.CombatBehaviour.DefaultWeapon = rangedWeapon;
                     }
-                    if (gun != null && gun is AvatarWeapon weapon)
-                    {
-                        weapon.CooldownDuration = officerConfig.WeaponFireRate;
-                    }
-#else
-                    if (gun != null)
-                    {
-                        AvatarRangedWeapon temp = gun.TryCast<AvatarRangedWeapon>();
-                        if (temp != null)
-                        {
-                            temp.CanShootWhileMoving = true;
-                            temp.MagazineSize = officerConfig.WeaponMagSize;
-                            temp.MaxFireRate = officerConfig.WeaponFireRate;
-                            temp.MaxUseRange = officerConfig.WeaponMaxRange;
-                            temp.ReloadTime = officerConfig.WeaponReloadTime;
-                            temp.RaiseTime = officerConfig.WeaponRaiseTime;
-                            temp.HitChance_MaxRange = officerConfig.WeaponHitChanceMax;
-                            temp.HitChance_MinRange = officerConfig.WeaponHitChanceMin;
-                            if (officer.Behaviour.CombatBehaviour.DefaultWeapon == null)
-                                officer.Behaviour.CombatBehaviour.DefaultWeapon = temp;
-                        }
-                        AvatarWeapon temp2 = gun.TryCast<AvatarWeapon>();
-                        if (temp2 != null)
-                        {
-                            temp2.CooldownDuration = officerConfig.WeaponFireRate;
-                        }
-                    }
-#endif
+                    Log("  Overridden weapon");
                 }
             }
             Log("Officer properties complete");

@@ -42,7 +42,7 @@ namespace NACopsV1
         {
             "Jessica", "Susan", "Linda", "Mary"
         };
-        public static readonly List<EVisualState> disabledVisualStates = new()
+        public static readonly List<EVisualState> PIdisabledVisualStates = new()
         {
             EVisualState.Brandishing, EVisualState.DisobeyingCurfew, EVisualState.DrugDealing, EVisualState.Pickpocketing, EVisualState.Suspicious
         };
@@ -101,7 +101,6 @@ namespace NACopsV1
                 if (currentPICount >= 1)
                     continue;
 
-                currentPICount += 1;
                 Log("PI Proceed");
 
                 coros.Add(MelonCoroutines.Start(HandlePIMonitor()));
@@ -111,12 +110,13 @@ namespace NACopsV1
         public static IEnumerator HandlePIMonitor()
         {
             Player randomPlayer = Player.GetRandomPlayer();
+            currentPICount += 1;
 
             PoliceOfficer offc = SpawnOfficerRuntime(false);
             offc.Behaviour.ScheduleManager.DisableSchedule();
             offc.Movement.PauseMovement();
             currentSummoned.Add(offc);
-            investigatorObjectIDs.Add(offc.GetInstanceID());
+            investigatorObjectIDs.Add(offc.transform.root.gameObject.GetInstanceID());
             offc.Movement.SpeedController.AddSpeedControl(new NPCSpeedController.SpeedControl("combat", 5, 0.55f));
             offc.ChatterEnabled = false;
 
@@ -135,16 +135,38 @@ namespace NACopsV1
             // When the investigator initiates combat
             // the visual state starts bugging
             // visual cone needs to be disabled
-            void OnCombatBegun()
+            UnityEngine.Events.UnityAction afterAction = null;
+            void AfterInvestigation()
             {
+                if (afterAction != null)
+                    offc.PursuitBehaviour.onBegin.RemoveListener(afterAction);
+                else
+                    return;
                 offc.Awareness.SetAwarenessActive(false);
-                return;
+                afterAction = null;
+                if (!(offc.Health.IsDead || offc.Health.IsKnockedOut))
+                {
+                    if (offc.Awareness.VisionCone.enabled)
+                        offc.Awareness.SetAwarenessActive(false);
+
+                    // if active beh is combat
+                    if (offc.Behaviour.activeBehaviour != null && (offc.Behaviour.activeBehaviour == offc.Behaviour.CombatBehaviour || offc.Behaviour.activeBehaviour == offc.PursuitBehaviour))
+                    {
+                        offc.PursuitBehaviour.Disable();
+                    }
+
+                    offc.Movement.SpeedController.AddSpeedControl(new NPCSpeedController.SpeedControl("combat", 5, 0.85f));
+                    offc.Movement.SetDestination(PoliceStation.PoliceStations[0].Doors[0].AccessPoint);
+                    if (offc.Movement.IsPaused)
+                        offc.Movement.ResumeMovement();
+                }
             }
-            offc.Behaviour.CombatBehaviour.onBegin.AddListener((UnityEngine.Events.UnityAction)OnCombatBegun);
+            afterAction = (UnityEngine.Events.UnityAction)AfterInvestigation;
+
+            offc.PursuitBehaviour.onBegin.AddListener(afterAction);
 
             // Remove the required visual states
             offc.Awareness.enabled = false;
-            offc.generalCrimeResponseActive = false;
 #if MONO
             ISightable sightable = (ISightable)randomPlayer;
             Dictionary<EVisualState, VisionCone.StateContainer> newStates = new();
@@ -158,11 +180,11 @@ namespace NACopsV1
             }
             else
             {
-                if (offc.Awareness.VisionCone.stateSettings.ContainsKey(sightable)) 
+                if (offc.Awareness.VisionCone.stateSettings.ContainsKey(sightable))
                 {
                     foreach (var kvp in offc.Awareness.VisionCone.stateSettings[sightable])
                     {
-                        if (disabledVisualStates.Contains(kvp.Key))
+                        if (PIdisabledVisualStates.Contains(kvp.Key))
                             continue;
                         else
                             newStates.Add(kvp.Key, kvp.Value);
@@ -178,7 +200,6 @@ namespace NACopsV1
                 offc.Awareness.VisionCone.stateSettings[sightable] = newStates;
             }
             offc.Awareness.enabled = true;
-
             // str propertycode , int investigation Delta in prperty
             Dictionary<string, int> sightedProperties = new();
             for (; ; )
@@ -299,21 +320,34 @@ namespace NACopsV1
                     {
                         if (sightedProperties.ContainsKey(propHeat.propertyCode))
                         {
+                            PlayerCrimeData.EPursuitLevel lastPursuitLevel = randomPlayer.CrimeData.CurrentPursuitLevel;
                             int investigationDelta = sightedProperties[propHeat.propertyCode];
-
+                            float investigationMultiplier = 1f;
+                            switch(lastPursuitLevel)
+                            {
+                                case PlayerCrimeData.EPursuitLevel.Arresting:
+                                    investigationMultiplier = 1.2f;
+                                    break;
+                                case PlayerCrimeData.EPursuitLevel.NonLethal:
+                                    investigationMultiplier = 1.45f;
+                                    break;
+                                case PlayerCrimeData.EPursuitLevel.Lethal:
+                                    investigationMultiplier = 1.7f;
+                                    break;
+                            }
                             // If player spent major time in building and was sighted outside atleast once
                             // And is still inside the same building at the end
                             if (investigationDelta >= 12 && proximityDelta > 4 && sightedAmount >= 1 && randomPlayer.CurrentProperty != null && randomPlayer.CurrentProperty.PropertyCode == propHeat.propertyCode)
                             {
                                 Log("Property heat increased +++");
-                                propHeat.propertyHeat += UnityEngine.Random.Range(6, 9);
+                                propHeat.propertyHeat += Mathf.RoundToInt((UnityEngine.Random.Range(6f, 9f) * investigationMultiplier));
                             }
 
                             // else if player spent time inside, and was sighted outside atleast once
                             // and PI has sighted outside, and is still in the same property
                             else if (investigationDelta >= 6 && proximityDelta > 2 && sightedAmount >= 1 && randomPlayer.CurrentProperty != null && randomPlayer.CurrentProperty.PropertyCode == propHeat.propertyCode)
                             {
-                                propHeat.propertyHeat += UnityEngine.Random.Range(4, 6);
+                                propHeat.propertyHeat += Mathf.RoundToInt((UnityEngine.Random.Range(4f, 6f) * investigationMultiplier));
                                 Log("Property heat increased ++");
                             }
 
@@ -322,7 +356,7 @@ namespace NACopsV1
                             // And player was sighted atleast 2 times
                             else if (propHeat.propertyHeat < 8 && investigationDelta >= 3 && proximityDelta >= 2 && sightedAmount >= 2)
                             {
-                                propHeat.propertyHeat += UnityEngine.Random.Range(2, 4);
+                                propHeat.propertyHeat += Mathf.RoundToInt((UnityEngine.Random.Range(2f, 4f) * investigationMultiplier));
                                 Log("Property heat increased +");
                             }
 
@@ -331,7 +365,7 @@ namespace NACopsV1
                             // or kill the PI after 1min?
                             else if (propHeat.propertyHeat > 5 && elapsed > 60f && proximityDelta > 4)
                             {
-                                propHeat.propertyHeat -= UnityEngine.Random.Range(1, 5);
+                                propHeat.propertyHeat += Mathf.RoundToInt((UnityEngine.Random.Range(1f, 5f) * investigationMultiplier));
                                 Log("Property heat decreased");
                             }
                         }
@@ -351,22 +385,7 @@ namespace NACopsV1
                 Log($"{kvp.Key} - Investigation delta: {kvp.Value}");
             }
 
-            if (!(offc.Health.IsDead || offc.Health.IsKnockedOut))
-            {
-                if (offc.Awareness.VisionCone.enabled)
-                    offc.Awareness.SetAwarenessActive(false);
-
-                // if active beh is combat
-                if (offc.Behaviour.activeBehaviour != null && (offc.Behaviour.activeBehaviour == offc.Behaviour.CombatBehaviour || offc.Behaviour.activeBehaviour == offc.PursuitBehaviour))
-                {
-                    offc.PursuitBehaviour.Disable();
-                }
-
-                offc.Movement.SpeedController.AddSpeedControl(new NPCSpeedController.SpeedControl("combat", 5, 0.85f));
-                offc.Movement.SetDestination(PoliceStation.PoliceStations[0].Doors[0].AccessPoint);
-                if (offc.Movement.IsPaused)
-                    offc.Movement.ResumeMovement();
-            }
+            AfterInvestigation();
 
             yield return Wait30;
             if (!registered) yield break;

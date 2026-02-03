@@ -33,16 +33,19 @@ using Il2CppScheduleOne.VoiceOver;
 #endif
 namespace NACopsV1
 {
-
     [HarmonyPatch(typeof(Customer), "ProcessHandover")]
     public static class Customer_ProcessHandover_Patch
     {
+        [HarmonyPrefix]
+#if MONO
         public static bool Prefix(Customer __instance, HandoverScreen.EHandoverOutcome outcome, Contract contract, List<ItemInstance> items, bool handoverByPlayer, bool giveBonuses = true)
+#else
+        public static bool Prefix(Customer __instance, HandoverScreen.EHandoverOutcome outcome, Contract contract, Il2CppSystem.Collections.Generic.List<ItemInstance> items, bool handoverByPlayer, bool giveBonuses = true)
+#endif
         {
             coros.Add(MelonCoroutines.Start(PreProcessHandover(__instance, handoverByPlayer)));
             return true;
         }
-
         public static IEnumerator PreProcessHandover(Customer __instance, bool handoverByPlayer)
         {
             if (!handoverByPlayer) yield break;
@@ -56,6 +59,7 @@ namespace NACopsV1
             (float min, float max) = ThresholdUtils.Evaluate(thresholdConfig.BuyBustProbability, relation);
             if (!currentConfig.DebugMode && UnityEngine.Random.Range(min, max) < 0.5f) yield break;
             PoliceOfficer offc = SpawnOfficerRuntime(autoDeactivate: false);
+            offc.Movement.PauseMovement();
             SetRandomAvatar(offc);
             offc.Behaviour.ScheduleManager.DisableSchedule();
             currentSummoned.Add(offc);
@@ -66,14 +70,16 @@ namespace NACopsV1
             {
                 coros.Add(MelonCoroutines.Start(SetTaser(offc)));
                 offc.Movement.Warp(closest);
-                yield return Wait1;
+                offc.Movement.ResumeMovement();
+                Log("Drug bust officer spawned now at " + offc.CenterPoint);
                 offc.ChatterVO.Play(EVOLineType.Command);
                 offc.Movement.FacePoint(customer.transform.position);
-                yield return Wait05;
                 target = Player.GetClosestPlayer(closest, out _);
                 target.CrimeData.SetPursuitLevel(PlayerCrimeData.EPursuitLevel.NonLethal);
                 offc.BeginFootPursuit(target.PlayerCode);
                 offc.PursuitBehaviour.Enable_Networked();
+                // Needs to momentarily disable arrest or almost insta arrest;
+                coros.Add(MelonCoroutines.Start(LateEnableArrest(offc)));
                 target.CrimeData.AddCrime(new AttemptingToSell(), 10);
             }
             else
@@ -82,16 +88,37 @@ namespace NACopsV1
                 coros.Add(MelonCoroutines.Start(DisposeSummoned(offc, true, target)));
             }
             coros.Add(MelonCoroutines.Start(DisposeSummoned(offc, false, target)));
-            yield return null;
+            yield break;
         }
-        
+
+        public static IEnumerator LateEnableArrest(PoliceOfficer offc)
+        {
+            float maxWait = 8f;
+            float current = 0f;
+            for (; ; )
+            {
+                if (!registered) yield break;
+                if (current >= maxWait) break;
+                yield return Wait05;
+                if (offc.PursuitBehaviour.arrestingEnabled)
+                    offc.PursuitBehaviour.arrestingEnabled = false;
+                current += 0.5f;
+            }
+            offc.PursuitBehaviour.arrestingEnabled = true;
+            yield break;
+        }
+
         public static IEnumerator SetTaser(PoliceOfficer offc)
         {
             offc.Behaviour.CombatBehaviour.SetWeapon(offc.TaserPrefab != null ? offc.TaserPrefab.AssetPath : string.Empty);
 
             if (offc.Behaviour.CombatBehaviour.currentWeapon == null) yield break;
 #if MONO
-            if (offc.Behaviour.CombatBehaviour.currentWeapon is AvatarRangedWeapon rangedWeapon)
+            AvatarRangedWeapon rangedWeapon = offc.Behaviour.CombatBehaviour.currentWeapon as AvatarRangedWeapon;
+#else
+            AvatarRangedWeapon rangedWeapon = offc.Behaviour.CombatBehaviour.currentWeapon.TryCast<AvatarRangedWeapon>();
+#endif
+            if (rangedWeapon != null)
             {
                 rangedWeapon.CanShootWhileMoving = true;
                 rangedWeapon.MagazineSize = 20;
@@ -101,31 +128,9 @@ namespace NACopsV1
                 rangedWeapon.RaiseTime = 0.1f;
                 rangedWeapon.HitChance_MaxRange = 0.6f;
                 rangedWeapon.HitChance_MinRange = 0.9f;
+                rangedWeapon.CooldownDuration = 0.3f;
             }
-            if (offc.Behaviour.CombatBehaviour.currentWeapon is AvatarWeapon weapon)
-            {
-                weapon.CooldownDuration = 0.3f;
-            }
-#else
 
-            AvatarRangedWeapon temp = offc.Behaviour.CombatBehaviour.currentWeapon.TryCast<AvatarRangedWeapon>();
-            if (temp != null)
-            {
-                temp.CanShootWhileMoving = true;
-                temp.MagazineSize = 20;
-                temp.MaxFireRate = 0.3f;
-                temp.MaxUseRange = 24f;
-                temp.ReloadTime = 0.2f;
-                temp.RaiseTime = 0.1f;
-                temp.HitChance_MaxRange = 0.6f;
-                temp.HitChance_MinRange = 0.9f;
-            }
-            AvatarWeapon temp2 = offc.Behaviour.CombatBehaviour.currentWeapon.TryCast<AvatarWeapon>();
-            if (temp2 != null)
-            {
-                temp2.CooldownDuration = 0.3f;
-            }
-#endif
             yield return null;
         }
         public static IEnumerator DisposeSummoned(PoliceOfficer offc, bool instant, Player target)
@@ -159,6 +164,7 @@ namespace NACopsV1
             {
                 MelonLogger.Error(ex);
             }
+            Log("Disposed summoned bustcop");
         }
     }
 

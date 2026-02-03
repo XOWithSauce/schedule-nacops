@@ -28,7 +28,7 @@ namespace NACopsV1
         {
             // IF the officer is a private investigator
             if (!currentConfig.PrivateInvestigator) return;
-            if (investigatorObjectIDs.Count > 0 && investigatorObjectIDs.Contains(__instance.GetInstanceID()))
+            if (investigatorObjectIDs.Count > 0 && investigatorObjectIDs.Contains(__instance.transform.root.gameObject.GetInstanceID()))
                 __result = __instance.FirstName;
             return;
         }

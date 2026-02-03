@@ -699,6 +699,8 @@ namespace NACopsV1
             public float MovementSpeedMultiplier = 1.7f;
 
             public bool OverrideWeapon = true;
+            public string WeaponPath = "Avatar/Equippables/M1911";
+            public float WeaponDamage = 46f;
             public int WeaponMagSize = 20;
             public float WeaponFireRate = 0.33f;
             public float WeaponMaxRange = 25f;

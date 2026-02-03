@@ -1,3 +1,21 @@
+# Version 2.0.1
+
+- Ensured that mod works in the 0.4.3f3 update
+- Added 2 new config values to the officer.json file "WeaponPath" and "WeaponDamage", the weapon path is work in progress and will not do anything in this update.
+- Changed the raid officer maximum waiting time inside the property while traveling to be 15 seconds up from 10 seconds so they will get interrupted by another search routine if they fail to path to the next object under 15 seconds.
+- Changed Investigator office to change property heat using a multiplier based on the players last crime status when the investigation concludes. This means that higher crime level at the end will also decrease property heat more. Having Dead or Alive crime status at the end causes the investigation resulted heat to be multiplied by 1.75, Wanted 1.45 and Under Arrest 1.2.
+- Changed Buy Bust officer to wait 8 seconds before enabling their arresting to avoid instant arrests
+- Simplified Buy Bust officer code
+- Fixed a bug in IL2CPP version of the mod where buy bust officer would not work due to incorrect harmony function input parameters
+- Fixed a bug in the mod spawned officers where the equipped belt would be unassigned causing errors in game logs
+- FIxed a bug in the Investigator and Raid Officers where they would cause excessive error messages in game logs
+- Fixed a bug in the Investigator where they would stay standing after investigation concludes
+- Fixed a bug in the Property Raid feature where the raiders are unable to travel to NPC Spawn Point in the Barn
+- Fixed a bug in the Property Raid feature where occasionally the raiders are unable to travel to Manor after traveling to Manor NPC Spawn Point
+- Fixed a bug in the Property Raid feature where rarely if 1 officer is alive and refuses to walk forward for some reason the raid would never start and officers would never despawn
+- Fixed a bug in the Property Raid feature where the same container could be searched twice
+- Fixed a bug where while using the CanEnterBuildings: true value in officer.json and while being under curfew the officers can arrest player inside or near their own property multiple times in a row locking them into infinite arrest loop
+
 # Version 2.0.0
 - Added Property Raids feature that allows cops to destroy your properties and steal illegal products. Raids can be configured in raid.json.
   - Raids start after sleeping through the night, in the morning if investigator has built up enough property heat and property hasnt been raided recently

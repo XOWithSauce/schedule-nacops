@@ -55,9 +55,9 @@ namespace NACopsV1
 {
     public static class RaidPropertyEvent 
     {
-        public static readonly List<EVisualState> disabledVisualStates = new()
+        public static readonly List<EVisualState> raiderDisabledVisualStates = new()
         {
-            EVisualState.Suspicious 
+            EVisualState.Suspicious, EVisualState.DrugDealing, EVisualState.Pickpocketing
         };
 
         public static readonly int maxSearchAttempts = 8; // Search from buildable items attempts
@@ -75,8 +75,9 @@ namespace NACopsV1
         public static CanvasGroup notificationGroup;
 
         // During active track state
-        private static bool raidActive = false;
-        private static int raidOfficersAlive = 4;
+        public static bool raidActive = false;
+        private static int raidOfficersAlive = 3;
+        public static List<int> raidOfficerObjIDs = new();
         private static List<RaidOfficer> currentRaidOfficers = new();
         private static List<RaidOfficer> deadRaidOfficers = new();
         private static List<RaidOfficer> officersArrived = new();
@@ -227,6 +228,7 @@ namespace NACopsV1
             officersReady = false;
             employeesScared = false;
             distancesToProperty.Clear();
+            raidOfficerObjIDs.Clear();
 
             if (resetUI) // Reusable while in scene
             {
@@ -289,10 +291,10 @@ namespace NACopsV1
 
                 offc.Movement.SpeedController.AddSpeedControl(new NPCSpeedController.SpeedControl("combat", 5, raidConfig.TraverseToPropertySpeed));
 
-                offc.Awareness.enabled = false;
                 // Remove the required visual states
-                offc.generalCrimeResponseActive = false;
+                raidOfficerObjIDs.Add(offc.transform.root.gameObject.GetInstanceID());
 
+                offc.Awareness.enabled = false;
 #if MONO
                 ISightable sightable = (ISightable)Player.Local;
                 Dictionary<EVisualState, VisionCone.StateContainer> newStates = new();
@@ -310,7 +312,7 @@ namespace NACopsV1
                     {
                         foreach (var kvp in offc.Awareness.VisionCone.stateSettings[sightable])
                         {
-                            if (disabledVisualStates.Contains(kvp.Key))
+                            if (raiderDisabledVisualStates.Contains(kvp.Key))
                                 continue;
                             else
                                 newStates.Add(kvp.Key, kvp.Value);
@@ -378,8 +380,19 @@ namespace NACopsV1
 
             // Exit Building Set destination
             Log("Traverse Raid Cops");
-            float offsetFromCenter = 0.85f;
+            float offsetFromCenter = 1.35f;
             int i = 0;
+
+            Transform targetLocation = null;
+            // Based on property sometimes it changes where the officers need to go first
+            if (property.propertyCode == "manor")
+            {
+                targetLocation = property.transform.Find("Manor Gate");
+            }
+            else
+            {
+                targetLocation = property.NPCSpawnPoint;
+            }
 
             foreach (RaidOfficer offc in currentRaidOfficers)
             {
@@ -392,13 +405,16 @@ namespace NACopsV1
                     case 3: dir = Vector3.back; break;
                 }
 
-                offc.officer.Movement.GetClosestReachablePoint(property.NPCSpawnPoint.position + dir * offsetFromCenter, out Vector3 groupPosition);
+                offc.officer.Movement.GetClosestReachablePoint(targetLocation.position + dir * offsetFromCenter, out Vector3 groupPosition);
                 Log(groupPosition.ToString());
 
                 yield return Wait1;
+                if (!registered) yield break;
+
                 offc.officer.Movement.ObstacleAvoidanceEnabled = true;
+                offc.officer.Movement.Agent.avoidancePriority = 10;
                 offc.officer.Movement.ResumeMovement();
-                offc.officer.Movement.SetDestination(pos: groupPosition);
+                offc.officer.Movement.SetDestination(pos: groupPosition, maximumDistanceForSuccess: 4f, cacheMaxDistSqr: 5f);
                 coros.Add(MelonCoroutines.Start(MonitorTraversal(offc, groupPosition)));
                 i++;
             }
@@ -414,10 +430,13 @@ namespace NACopsV1
                 distancesToProperty.Add(offc, Vector3.Distance(movement.FootPosition, groupPosition));
             }
 
+            float maxTraversalTime = 130f;
+            float current = 0f;
             for (; ; )
             {
                 yield return Wait05;
                 if (!registered) yield break;
+                current += 0.5f;
 
                 if (officersArrived.Contains(offc)) break;
 
@@ -440,7 +459,7 @@ namespace NACopsV1
                     distancesToProperty[offc] = Vector3.Distance(movement.FootPosition, groupPosition);
                 }
 
-                if (Vector3.Distance(movement.FootPosition, groupPosition) < 3f)
+                if (Vector3.Distance(movement.FootPosition, groupPosition) < 5f || current >= maxTraversalTime)
                 {
                     Log("Officer arrived");
                     movement.EndSetDestination(NPCMovement.WalkResult.Success);
@@ -464,17 +483,20 @@ namespace NACopsV1
                 }
                 // anything else to check?
             }
-            yield return null;
+            yield break;
         }
 
         public static void OnArrivedAtProperty(RaidOfficer offc)
         {
-            offc.officer.Movement.PauseMovement();
             coros.Add(MelonCoroutines.Start(WaitForAllArrived(offc)));
         }
         // Wait for each member thats alive
         public static IEnumerator WaitForAllArrived(RaidOfficer offc)
         {
+            yield return Wait2;
+            if (!registered) yield break;
+            offc.officer.Movement.PauseMovement();
+
             Log("Wait for Arrival");
             int maxWait = 30;
             int time = 0;
@@ -895,7 +917,7 @@ namespace NACopsV1
 
                 } while (!isValidItem);
 
-                if (selected != null)
+                if (selected != null && !containers)
                     toBeDestroyed.Add(selected.GetInstanceID());
                 else if (selected != null && containers)
                     searchedContainers.Add(selected.GetInstanceID());
@@ -1016,7 +1038,7 @@ namespace NACopsV1
                     if (storage.ItemSlots[i].IsLocked) continue;
                     if (storage.ItemSlots[i].ItemInstance == null) continue;
                     if (storage.ItemSlots[i].ItemInstance.Definition.legalStatus == ELegalStatus.Legal) continue;
-                    yield return Wait1;
+                    yield return Wait05;
                     if (!CanContinue(offc))
                     {
                         storage.AccessSettings = originalSettings;
@@ -1053,9 +1075,13 @@ namespace NACopsV1
         
         public static IEnumerator WaitEndSetDestination(RaidOfficer offc, Func<bool> checkConsumed)
         {
-            yield return Wait5;
-            yield return Wait5;
-            if (!registered) yield break;
+            int maxWaitSecs = 15;
+            for (int i = 0; i < maxWaitSecs; i += 5)
+            {
+                yield return Wait5;
+                if (checkConsumed()) yield break;
+                if (!registered) yield break;
+            }
             if (!checkConsumed())
             {
                 if (offc.currentTargetObj != null && Vector3.Distance(offc.officer.CenterPoint, offc.currentTargetObj.transform.position) < 2f)
@@ -1125,6 +1151,8 @@ namespace NACopsV1
             if (offc.officer.Behaviour.activeBehaviour != null && (offc.officer.Behaviour.activeBehaviour == offc.officer.Behaviour.CombatBehaviour || offc.officer.Behaviour.activeBehaviour == offc.officer.PursuitBehaviour))
             {
                 Log("Cant continue due to combat or crime status");
+                if (offc.officer.Movement.IsPaused)
+                    offc.officer.Movement.ResumeMovement();
                 coros.Add(MelonCoroutines.Start(WaitCombatEnd(offc)));
                 return false;
             }

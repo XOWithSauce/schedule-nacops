@@ -393,7 +393,7 @@ namespace NACopsV1
                 listmessage += "\nIndex: Name";
                 foreach (SentryInstance inst in generatedSentryInstances.Keys)
                 {
-                    listmessage += $"\n{i}: {inst.Location.gameObject.name}";
+                    listmessage += $"\n{i}: {inst._potentialLocations[0].gameObject.name}";
                     i++;
                 }
                 listmessage += "\n-------";
@@ -404,7 +404,7 @@ namespace NACopsV1
                 List<SentryInstance> sentrys = generatedSentryInstances.Keys.ToList();
                 if (index >= sentrys.Count) return;
                 SentryInstance instance = sentrys[index];
-                if (instance.Location.AssignedOfficers.Count > 0)
+                if (instance._potentialLocations[0].AssignedOfficers.Count > 0)
                 {
                     Log("Sentry is already active");
                     return;
@@ -414,7 +414,7 @@ namespace NACopsV1
                 instance.StartTime = NetworkSingleton<TimeManager>.Instance.CurrentTime;
                 instance.EndTime = TimeManager.AddMinutesTo24HourTime(originalStart, 240);
                 instance.StartEntry();
-                Log($"Sentry {instance.Location.gameObject.name} Spawned");
+                Log($"Sentry {instance._potentialLocations[0].gameObject.name} Spawned");
                 IEnumerator EndSoon()
                 {
                     yield return new WaitForSeconds(240f);
@@ -432,13 +432,13 @@ namespace NACopsV1
                 List<SentryInstance> sentrys = generatedSentryInstances.Keys.ToList();
                 if (index < 0 || index >= sentrys.Count) return;
                 SentryInstance instance = sentrys[index];
-                for (int i = 0; i < instance.Location.StandPoints.Count; i++)
+                for (int i = 0; i < instance._potentialLocations[0].Routes.Count; i++)
                 {
-                    Vector3 pos = instance.Location.StandPoints[i].position;
+                    Vector3 pos = instance._potentialLocations[0].Routes[0].RoutePoints[i].position;
                     Vector3[] standPoints = new Vector3[] { pos, pos + Vector3.up * 8f };
-                    DrawPath($"{instance.Location.gameObject.name}_{i}", standPoints);
+                    DrawPath($"{instance._potentialLocations[0].gameObject.name}_{i}", standPoints);
                 }
-                Log($"Sentry {instance.Location.gameObject.name} Visualized");
+                Log($"Sentry {instance._potentialLocations[0].gameObject.name} Visualized");
                 return;
             }
 

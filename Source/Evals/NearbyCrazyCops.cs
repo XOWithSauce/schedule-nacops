@@ -97,7 +97,6 @@ namespace NACopsV1
 
         public static IEnumerator GreedyBodySearchFind(PoliceOfficer officer, Player player, float minDistance)
         {
-
             officer.ChatterVO.Play(EVOLineType.PoliceChatter);
             officer.Movement.FacePoint(player.transform.position, lerpTime: 0.4f);
 

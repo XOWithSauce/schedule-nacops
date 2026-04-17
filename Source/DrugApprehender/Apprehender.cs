@@ -10,10 +10,12 @@ using static NACopsV1.BaseUtility;
 using static NACopsV1.DebugModule;
 
 #if MONO
+using ScheduleOne.Core;
 using ScheduleOne.PlayerScripts;
 using ScheduleOne.Police;
 using ScheduleOne.Product;
 #else
+using Il2CppScheduleOne.Core;
 using Il2CppScheduleOne.PlayerScripts;
 using Il2CppScheduleOne.Police;
 using Il2CppScheduleOne.Product;

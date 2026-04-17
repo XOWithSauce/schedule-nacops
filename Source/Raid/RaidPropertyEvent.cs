@@ -9,6 +9,7 @@ using static NACopsV1.OfficerOverrides;
 using static NACopsV1.AvatarUtility;
 
 #if MONO
+using ScheduleOne.Core.Items.Framework;
 using ScheduleOne.Vision;
 using ScheduleOne.PlayerScripts;
 using ScheduleOne.Employees;
@@ -29,6 +30,7 @@ using ScheduleOne.Storage;
 using ScheduleOne.NPCs.Behaviour;
 using TMPro;
 #else
+using Il2CppScheduleOne.Core.Items.Framework;
 using Il2CppScheduleOne.Vision;
 using Il2CppScheduleOne.PlayerScripts;
 using Il2CppScheduleOne.Employees;

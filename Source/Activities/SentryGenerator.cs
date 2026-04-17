@@ -41,16 +41,29 @@ namespace NACopsV1
                     Log($"- Days: {string.Join(" ", ser.days)}");
 
                     SentryLocation loc = newSentryObject.AddComponent<SentryLocation>();
-                    loc.StandPoints = new();
+                    loc.Routes = new();
+
+                    
+                    SentryLocation.SentryRoute newRoute = new();
+
                     GameObject standPos1 = new("Stand point");
                     standPos1.transform.parent = newSentryObject.transform;
                     standPos1.transform.SetPositionAndRotation(ser.standPosition1, Quaternion.Euler(ser.pos1Rotation));
-                    loc.StandPoints.Add(standPos1.transform);
 
                     GameObject standPos2 = new("Stand point (1)");
                     standPos2.transform.parent = newSentryObject.transform;
                     standPos2.transform.SetPositionAndRotation(ser.standPosition2, Quaternion.Euler(ser.pos2Rotation));
-                    loc.StandPoints.Add(standPos2.transform);
+
+#if MONO
+                    newRoute.RoutePoints = [standPos1.transform, standPos2.transform];
+#else
+                    newRoute.RoutePoints = new(2);
+                    newRoute.RoutePoints[0] = standPos1.transform;
+                    newRoute.RoutePoints[1] = standPos2.transform;
+#endif
+
+                    newRoute.MinutesPerPoint = 60; // todo into json config??
+                    loc.Routes.Add(newRoute);
 
                     loc.gameObject.SetActive(true);
 
@@ -58,7 +71,12 @@ namespace NACopsV1
                     inst.StartTime = ser.startTime;
                     inst.EndTime = ser.endTime;
                     inst.Members = ser.members;
-                    inst.Location = loc;
+#if MONO
+                    inst._potentialLocations = [loc];
+#else
+                    inst._potentialLocations = new(1);
+                    inst._potentialLocations[0] = loc;
+#endif
                     inst.OnlyIfCurfewEnabled = ser.onlyIfCurfew;
                     inst.IntensityRequirement = ser.intensityRequirement;
 

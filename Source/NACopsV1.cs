@@ -55,7 +55,7 @@ namespace NACopsV1
         public const string Description = "Crazyyyy cops";
         public const string Author = "XOWithSauce";
         public const string Company = null;
-        public const string Version = "2.0.1";
+        public const string Version = "2.0.2";
         public const string DownloadLink = null;
     }
 
@@ -179,23 +179,31 @@ namespace NACopsV1
 
             yield return null;
         }
+
+
         public static IEnumerator OpenCarryInit()
         {
             if (!currentConfig.NoOpenCarryWeapons) yield break;
 #if MONO
-            PlayerInventory.instance.onEquippedSlotChanged = (Action<int>)Delegate.Combine(PlayerInventory.instance.onEquippedSlotChanged, new Action<int>(OnSlotChanged));
+            PlayerInventory.instance.onEquippedSlotChanged = (Action<int>)Delegate.Combine(PlayerInventory.instance.onEquippedSlotChanged, new Action<int>(OnSlotChanged)); // add state brandishing
 #else
             PlayerInventory.instance.onEquippedSlotChanged += (Il2CppSystem.Action<int>)OnSlotChanged;
 #endif
+            // redundant? doesnt run?
+            /*
             void OnInventoryChange(bool b)
             {
-                OnSlotChanged(1);
+                // is this Secoond?
+                Log("OnInventoryChange");
+                OnSlotChanged(1); // Remove state for some reason?
             }
 #if MONO
             PlayerInventory.instance.onInventoryStateChanged = (Action<bool>)Delegate.Combine(PlayerInventory.instance.onInventoryStateChanged, new Action<bool>(OnInventoryChange));
 #else
             PlayerInventory.instance.onInventoryStateChanged += (Il2CppSystem.Action<bool>)OnInventoryChange;
 #endif
+             
+             */
             Player.Local.onArrested.AddListener((UnityEngine.Events.UnityAction)OnPlayerArrested);
             SetWeaponsLegalStatus();
             Log("Enabled No Open Carry Weapons");

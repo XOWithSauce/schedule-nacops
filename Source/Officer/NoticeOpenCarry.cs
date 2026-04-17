@@ -1,9 +1,13 @@
+using static NACopsV1.DebugModule;
+
 #if MONO
+using ScheduleOne.Core.Items.Framework;
 using ScheduleOne.ItemFramework;
 using ScheduleOne.DevUtilities;
 using ScheduleOne.PlayerScripts;
 using ScheduleOne.Vision;
 #else
+using Il2CppScheduleOne.Core.Items.Framework;
 using Il2CppScheduleOne.ItemFramework;
 using Il2CppScheduleOne.DevUtilities;
 using Il2CppScheduleOne.PlayerScripts;
@@ -17,7 +21,7 @@ namespace NACopsV1
     {
         public static readonly List<string> weaponIDs = new()
         {
-            "baseballbat", "fryingpan", "machete", "revolver", "m1911", "pumpshotgun"
+            "baseballbat", "fryingpan", "machete", "revolver", "goldenm1911", "m1911", "pumpshotgun"
         };
         public static bool HasSetBrandishing = false;
         public static bool IsCheckingSlot = false;
@@ -25,9 +29,8 @@ namespace NACopsV1
         #region Check for player equip slot is weapon and update visibility
         public static void CheckSlotItem()
         {
-            int current = PlayerSingleton<PlayerInventory>.Instance._equippedSlotIndex;
-            if (current == -1)
-                current = PlayerSingleton<PlayerInventory>.Instance.PreviousEquippedSlotIndex;
+            Log("Checking slot: " + PlayerSingleton<PlayerInventory>.Instance.EquippedSlotIndex);
+            int current = PlayerSingleton<PlayerInventory>.Instance.EquippedSlotIndex;
             if (current >= 0 && current < 8)
             {
                 ItemInstance item = Player.Local.Inventory[current].ItemInstance;
@@ -49,6 +52,7 @@ namespace NACopsV1
                 SetNoticable(false);
             }
             IsCheckingSlot = false;
+            Log("Checked slot");
             return;
         }
 
@@ -72,12 +76,12 @@ namespace NACopsV1
             {
                 HasSetBrandishing = true;
                 Player.Local.VisualState.ApplyState("Brandishing", EVisualState.Brandishing, 0f);
-                //Log("Player Brandishing");
+                Log("Player Brandishing");
             }
-            else if (HasSetBrandishing)
+            else if (!enabled && HasSetBrandishing)
             {
                 HasSetBrandishing = false;
-                //Log("RemoveState Brandishing");
+                Log("RemoveState Brandishing");
                 Player.Local.VisualState.RemoveState("Brandishing", 0f);
             }
         }
@@ -95,7 +99,7 @@ namespace NACopsV1
             foreach (string id in weaponIDs)
             {
                 ItemDefinition defWeapon = GetItem(id);
-                defWeapon.legalStatus = ELegalStatus.HighSeverityDrug; // or make later new enum value??
+                defWeapon.legalStatus = ELegalStatus.HighSeverityDrug;
             }
         }
         #endregion

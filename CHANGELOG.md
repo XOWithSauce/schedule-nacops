@@ -1,3 +1,8 @@
+# Version 2.0.2
+- Ensured that mod works in the 0.4.5f2 update
+- Fixed a bug in the feature Notice Open Carry weapons where brandishing state was being removed incorrectly when player was holding a weapon
+- Removed redundant code from the Notice Open Carry weapons feature
+
 # Version 2.0.1
 
 - Ensured that mod works in the 0.4.3f3 update

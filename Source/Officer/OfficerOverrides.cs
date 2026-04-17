@@ -13,7 +13,7 @@ using ScheduleOne.NPCs.Behaviour;
 using ScheduleOne.Map;
 using ScheduleOne.NPCs;
 using ScheduleOne.Police;
-using ScheduleOne.AvatarFramework.Customization;
+using ScheduleOne.AvatarFramework;
 using FishNet.Object;
 #else
 using Il2CppScheduleOne.AvatarFramework.Equipping;
@@ -21,7 +21,7 @@ using Il2CppScheduleOne.NPCs.Behaviour;
 using Il2CppScheduleOne.Map;
 using Il2CppScheduleOne.NPCs;
 using Il2CppScheduleOne.Police;
-using Il2CppScheduleOne.AvatarFramework.Customization;
+using Il2CppScheduleOne.AvatarFramework;
 using Il2CppFishNet.Object;
 #endif
 
@@ -86,13 +86,19 @@ namespace NACopsV1
                 yield break;
             PoliceStation station = PoliceStation.PoliceStations[0];
 #endif
+            if (station.Doors.Length == 0)
+            {
+                Log("Station doors is empty, failed to extend officer pool");
+                yield break;
+            }
+
             for (int i = 0; i < station.OfficerPool.Count; i++)
                 generatedOfficerPool.Add(station.OfficerPool[i]);
 
             for (int i = 0; i < officerConfig.ModAddedOfficersCount; i++)
             {
                 PoliceOfficer offc = SpawnOfficerRuntime(i);
-                station.NPCEnteredBuilding(offc);
+                station.NPCEnteredBuilding(offc, station.Doors[0]);
                 generatedOfficerPool.Add(offc);
                 PoliceOfficer.Officers.Add(offc);
                 

@@ -99,10 +99,10 @@ namespace NACopsV1
             {
                 if (!registered) yield break;
                 if (current >= maxWait) break;
-                yield return Wait05;
+                yield return Wait01;
                 if (offc.PursuitBehaviour.arrestingEnabled)
                     offc.PursuitBehaviour.arrestingEnabled = false;
-                current += 0.5f;
+                current += 0.1f;
             }
             offc.PursuitBehaviour.arrestingEnabled = true;
             yield break;

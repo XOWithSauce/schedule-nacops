@@ -1,10 +1,7 @@
-
-
-
 using UnityEngine;
 
-using static NACopsV1.ConfigLoader;
-using static NACopsV1.DebugModule;
+using static NACops.ConfigLoader;
+using static NACops.DebugModule;
 
 #if MONO
 using ScheduleOne.Law;
@@ -14,7 +11,7 @@ using Il2CppScheduleOne.Law;
 using Il2CppScheduleOne.NPCs.Behaviour;
 #endif
 
-namespace NACopsV1
+namespace NACops
 {
     public class FootPatrolGenerator
     {
@@ -38,6 +35,7 @@ namespace NACopsV1
                     Log($"- Days: {string.Join(" ", ser.days)}");
                     FootPatrolRoute route = newPatrolObject.AddComponent<FootPatrolRoute>();
                     route.name = ser.name;
+                    route.RouteName = ser.name;
                     route.StartWaypointIndex = 0;
 
                     Transform[] generatedWaypoints = new Transform[ser.waypoints.Count];
@@ -56,7 +54,8 @@ namespace NACopsV1
                     PatrolInstance inst = new();
                     inst.StartTime = ser.startTime;
                     inst.EndTime = ser.endTime;
-                    inst.Members = ser.members;
+                    inst.MaxMembers = ser.members;
+                    inst.MinMembers = 1;
                     inst.Route = route;
                     inst.OnlyIfCurfewEnabled = ser.onlyIfCurfew;
                     inst.IntensityRequirement = ser.intensityRequirement;
@@ -126,7 +125,9 @@ namespace NACopsV1
     {
         public int startTime = 1900;
         public int endTime = 500;
-        public int members = 1;
+
+        public int members = 2;
+
         public int intensityRequirement = 1;
         public bool onlyIfCurfew = false;
 

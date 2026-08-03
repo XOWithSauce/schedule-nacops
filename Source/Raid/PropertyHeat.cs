@@ -1,6 +1,6 @@
 
 
-namespace NACopsV1
+namespace NACops
 {
     [Serializable]
     public class PropertyHeat

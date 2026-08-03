@@ -1,6 +1,3 @@
-
-
-
 using UnityEngine;
 
 #if MONO
@@ -9,14 +6,14 @@ using ScheduleOne.Police;
 using Il2CppScheduleOne.Police;
 #endif
 
-namespace NACopsV1
+namespace NACops
 {
 
     public static class RuntimeImpostor
     {
         private static Vector3 cameraPosition = new Vector3(-1.95f, 501f, 0f);
         private static Vector3 cameraRotationEuler = new Vector3(0f, 90f, 0f);
-        public static Vector3 targetPosition = new Vector3(0f, 500f, 0f);
+        public static Vector3 targetPosition = new Vector3(0f, 501f, 0f);
         public static Vector3 targetRotationEuler = new Vector3(0f, 0f, 0f);
         private static Vector3 impostorLightPos = new Vector3(-5f, 504f, 0f);
         private static Vector3 impostorLightRot = new Vector3(0f, 0f, 90f);
@@ -30,7 +27,7 @@ namespace NACopsV1
             tempLight.transform.SetPositionAndRotation(impostorLightPos, Quaternion.Euler(impostorLightRot));
             Light lightComp = tempLight.AddComponent<Light>();
             lightComp.range = 20f;
-            lightComp.intensity = 5f;
+            lightComp.intensity = 2.2f;
 
             GameObject tempCam = new GameObject("TempCamera");
             tempCam.transform.SetPositionAndRotation(cameraPosition, Quaternion.Euler(cameraRotationEuler));
@@ -42,7 +39,7 @@ namespace NACopsV1
             camera.clearFlags = CameraClearFlags.SolidColor;
             camera.backgroundColor = new Color(0f, 0f, 0f , 0f);
 
-            camera.targetTexture = RenderTexture.GetTemporary(128, 128, 24, RenderTextureFormat.ARGB32);
+            camera.targetTexture = RenderTexture.GetTemporary(64, 64, 24, RenderTextureFormat.ARGB32);
             camera.Render();
 
             RenderTexture prev = RenderTexture.active;
@@ -58,7 +55,7 @@ namespace NACopsV1
 
             UnityEngine.Object.Destroy(tempCam);
             UnityEngine.Object.Destroy(tempLight);
-            createdTextures.Add(officer.GetInstanceID(), tex);
+            createdTextures.Add(officer.transform.root.gameObject.GetInstanceID(), tex);
 
             return tex;
         }

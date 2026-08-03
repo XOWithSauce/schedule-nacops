@@ -2,13 +2,14 @@ using MelonLoader;
 using System.Collections;
 using UnityEngine;
 
-using static NACopsV1.DebugModule;
-using static NACopsV1.FootPatrolGenerator;
-using static NACopsV1.NACops;
-using static NACopsV1.RaidPropertyEvent;
-using static NACopsV1.SentryGenerator;
-using static NACopsV1.VehiclePatrolGenerator;
-using static NACopsV1.PrivateInvestigator;
+using static NACops.DebugModule;
+using static NACops.FootPatrolGenerator;
+using static NACops.NACops;
+using static NACops.RaidPropertyEvent;
+using static NACops.SentryGenerator;
+using static NACops.VehiclePatrolGenerator;
+using static NACops.PrivateInvestigator;
+using static NACops.MassSurveillance;
 
 #if MONO
 using ScheduleOne.DevUtilities;
@@ -17,6 +18,10 @@ using ScheduleOne.Law;
 using ScheduleOne.NPCs.Behaviour;
 using ScheduleOne.Property;
 using ScheduleOne.PlayerScripts;
+using ScheduleOne.Map;
+using ScheduleOne.Police;
+using ScheduleOne.UI;
+using TMPro;
 #else
 using Il2CppScheduleOne.DevUtilities;
 using Il2CppScheduleOne.GameTime;
@@ -24,10 +29,14 @@ using Il2CppScheduleOne.Law;
 using Il2CppScheduleOne.NPCs.Behaviour;
 using Il2CppScheduleOne.Property;
 using Il2CppScheduleOne.PlayerScripts;
+using Il2CppScheduleOne.Map;
+using Il2CppScheduleOne.Police;
+using Il2CppScheduleOne.UI;
+using Il2CppTMPro;
 #endif
 
 
-namespace NACopsV1
+namespace NACops
 {
     public static class ConsoleModule
     {
@@ -67,6 +76,8 @@ namespace NACopsV1
                 if (lineRenderMat == null)
                     lineRenderMat = new Material(Shader.Find("Sprites/Default"));
 
+                if (cameraBeamMat == null)
+                    cameraBeamMat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
             }
             protected static void DrawPath(string name, Vector3[] points)
             {
@@ -86,6 +97,9 @@ namespace NACopsV1
         {
             public override string Name => "footpatrol";
             public override CommandSupport SupportedMethods => CommandSupport.List | CommandSupport.Spawn | CommandSupport.Visualize | CommandSupport.Build;
+
+            public static List<Vector3> recordedPathNodes = new();
+            public static string currentPathName;
             public override void List()
             {
                 string listmessage = "";
@@ -139,8 +153,7 @@ namespace NACopsV1
                 return;
             }
 
-            public List<Vector3> recordedPathNodes = new();
-            public string currentPathName;
+
             public override void Build(string arg)
             {
                 if (arg.ToLower() == "start")
@@ -178,7 +191,7 @@ namespace NACopsV1
                 while (registered && isBuilding)
                 {
                     // if distance from last node is larger than 6 units
-                    if (Vector3.Distance(tr.position, recordedPathNodes[recordedPathNodes.Count-1]) > 6f)
+                    if (Vector3.Distance(tr.position, recordedPathNodes[recordedPathNodes.Count - 1]) > 6f)
                     {
                         BuildNode(lineRenderer);
                     }
@@ -211,7 +224,7 @@ namespace NACopsV1
 
                 patrol.startTime = 1900;
                 patrol.endTime = 500;
-                patrol.members = 1;
+                patrol.members = 2;
                 patrol.intensityRequirement = 1;
                 patrol.onlyIfCurfew = false;
                 patrol.name = currentPathName;
@@ -237,6 +250,9 @@ namespace NACopsV1
         {
             public override string Name => "vehiclepatrol";
             public override CommandSupport SupportedMethods => CommandSupport.List | CommandSupport.Spawn | CommandSupport.Visualize | CommandSupport.Build;
+
+            public static List<Vector3> recordedPathNodes = new();
+            public static string currentPathName;
 
             public override void List()
             {
@@ -288,8 +304,6 @@ namespace NACopsV1
                 return;
             }
 
-            public List<Vector3> recordedPathNodes = new();
-            public string currentPathName;
             public override void Build(string arg)
             {
                 if (arg.ToLower() == "start")
@@ -385,6 +399,8 @@ namespace NACopsV1
         {
             public override string Name => "sentry";
             public override CommandSupport SupportedMethods => CommandSupport.List | CommandSupport.Spawn | CommandSupport.Visualize | CommandSupport.Build;
+            public static List<Vector3> recordedPathNodes = new();
+            public static string currentPathName;
 
             public override void List()
             {
@@ -442,8 +458,6 @@ namespace NACopsV1
                 return;
             }
 
-            public List<Vector3> recordedPathNodes = new();
-            public string currentPathName;
             public override void Build(string arg)
             {
                 if (arg.ToLower() == "start")
@@ -538,7 +552,7 @@ namespace NACopsV1
                     listmessage += "\n-------";
                     Log(listmessage);
                 }
-                
+
                 return;
             }
             public override void Spawn(int index)
@@ -571,8 +585,8 @@ namespace NACopsV1
                     return;
                 }
 
-                
-                
+
+
                 coros.Add(MelonCoroutines.Start(BeginRaidEvent(selected)));
                 return;
             }
@@ -587,20 +601,312 @@ namespace NACopsV1
             public override string Name => "investigator";
             public override CommandSupport SupportedMethods => CommandSupport.SpawnNoIndex;
 
-            public override void List() 
+            public override void List()
             {
                 Log("Not supported");
                 return;
             }
             public override void Spawn(int index)
             {
-                Log("Spawning Private Investigator");
-                coros.Add(MelonCoroutines.Start(HandlePIMonitor()));
+                if (investigatorActive)
+                {
+                    Log("Investigator is already active!");
+                }
+                else
+                {
+                    Log("Spawning Private Investigator");
+                    coros.Add(MelonCoroutines.Start(HandlePIMonitor()));
+                }
                 return;
             }
             public override void Visualize(int index)
             {
                 Log("Not supported");
+                return;
+            }
+        }
+        public class CopAnalyticsTarget : ConsoleCommandBase
+        {
+            public override string Name => "analytics";
+            public static TextMeshProUGUI AnalyticsTextPanel;
+
+#if DEBUG
+            public override CommandSupport SupportedMethods => CommandSupport.List | CommandSupport.Build | CommandSupport.Visualize;
+#else
+            public override CommandSupport SupportedMethods => CommandSupport.Visualize;
+#endif
+            // Debug builds only can output the csv files or record the runtime
+            // and output csv list analytics & build analytics start/stop
+            // Visualize shows counts on screen
+#if DEBUG
+            public override void List()
+            {
+                Log("Creating static weekly officer requirements...");
+                PreEvaluateWeeklyRequirements();
+                return;
+            }
+
+            public override void Build(string arg)
+            {
+                if (arg.ToLower() == "start")
+                    BuildStart();
+                else if (isBuilding)
+                    BuildEnd();
+            }
+            public void BuildStart()
+            {
+                if (isBuilding)
+                {
+                    Log($"Already recording runtime analytics!\n    Use: nacops build {Name} stop\n    to stop recording");
+                    return;
+                }
+                Log($"Starting runtime analytics recording with automatic time pass.\n    Use: nacops build {Name} stop\n    to stop recording and output the file");
+                isBuilding = true;
+                TimeManager instance = NetworkSingleton<TimeManager>.Instance;
+#if MONO
+                instance.onHourPass = (Action)Delegate.Combine(instance.onHourPass, new Action(EvaluateLawSettingsState));
+#else
+                instance.onHourPass += (Il2CppSystem.Action)EvaluateLawSettingsState;
+#endif
+
+            }
+            public void BuildEnd()
+            {
+                if (!isBuilding)
+                {
+                    Log($"Analytics runtime recording is not active!\n    Use: nacops build {Name} start\n    to start recording");
+                    return;
+                }
+                isBuilding = false;
+
+                TimeManager instance = NetworkSingleton<TimeManager>.Instance;
+#if MONO
+                instance.onHourPass = (Action)Delegate.Remove(instance.onHourPass, new Action(EvaluateLawSettingsState));
+#else
+                instance.onHourPass -= (Il2CppSystem.Action)EvaluateLawSettingsState;
+#endif
+                OnRuntimeAnalyticsBuildEnd();
+            }
+
+#endif
+            public override void Visualize(int index)
+            {
+                if (AnalyticsTextPanel == null)
+                {
+                    MelonCoroutines.Start(MakeUI());
+                    return;
+                }
+
+                if (AnalyticsTextPanel != null && AnalyticsTextPanel.enabled)
+                {
+                    Log("Disabling Analytics text");
+                    AnalyticsTextPanel.enabled = false;
+                }
+                else if (AnalyticsTextPanel != null)
+                {
+                    Log("Enabling Analytics text");
+                    AnalyticsTextPanel.enabled = true;
+                }
+
+                return;
+            }
+            public IEnumerator MakeUI()
+            {
+                AnalyticsTextPanel = new GameObject("CurrentLawIntensity").AddComponent<TextMeshProUGUI>();
+                SetupAnalyticsUI(AnalyticsTextPanel);
+                Log("Finished instantiating UI");
+                coros.Add(MelonCoroutines.Start(UpdateUI()));
+                yield break;
+            }
+            public IEnumerator UpdateUI()
+            {
+                SetAnalyticsString();
+                for (; ; )
+                {
+                    yield return Wait30;
+                    if (!registered) yield break;
+                    if (!AnalyticsTextPanel.enabled) continue;
+                    SetAnalyticsString();
+                }
+            }
+            public void SetAnalyticsString()
+            {
+                string current = "";
+                current += $"LAW INTENSITY: {Singleton<LawController>.Instance.internalLawIntensity}\n";
+
+                current += $"IN POOL: {PoliceStation.PoliceStations[0].OfficerPool.Count}\n";
+
+                int notInBuilding = 0;
+
+                // precalculate how many are actually attending with behaviour active
+                int behActiveCheckpoint = 0;
+                int behActiveFootPatrol = 0;
+                int behActiveSentry = 0;
+                int behActiveVehiclePatrol = 0;
+
+
+                foreach (PoliceOfficer offc in PoliceOfficer.Officers)
+                {
+                    if (!offc.isInBuilding) notInBuilding++;
+                    if (offc.Behaviour.activeBehaviour != null)
+                    {
+                        if (offc.Behaviour.activeBehaviour == offc.CheckpointBehaviour)
+                            behActiveCheckpoint++;
+
+                        if (offc.Behaviour.activeBehaviour == offc.FootPatrolBehaviour)
+                            behActiveFootPatrol++;
+
+                        if (offc.Behaviour.activeBehaviour == offc.SentryBehaviour)
+                            behActiveSentry++;
+
+                        if (offc.Behaviour.activeBehaviour == offc.VehiclePatrolBehaviour)
+                            behActiveVehiclePatrol++;
+                    }
+
+                }
+                current += $"ACTIVE: {notInBuilding}/{PoliceOfficer.Officers.Count}\n";
+
+                // calculate current law activity required
+                int checkpointsInSettings = 0;
+                int checkpointsOfficersReqMin = 0;
+                int checkpointsOfficersReqMax = 0;
+
+                int patrolsInSettings = 0;
+                int patrolsOfficersReqMin = 0;
+                int patrolsOfficersReqMax = 0;
+
+                int sentriesInSettings = 0;
+                int sentriesOfficersReqMin = 0;
+                int sentriesOfficersReqMax = 0;
+
+                int vehiclepatrolsInSettings = 0;
+                int vehiclepatrolsOfficersReqMin = 0;
+
+                LawActivitySettings settings = Singleton<LawController>.Instance.GetSettings();
+                int currentTime = TimeManager.Instance.CurrentTime;
+                List<string> formatted = new();
+                foreach (var instance in settings.Checkpoints)
+                {
+                    if (TimeManager.IsGivenTimeWithinRange(currentTime, instance.StartTime, instance.EndTime))
+                    {
+                        checkpointsOfficersReqMin += instance.MinMembers;
+                        checkpointsOfficersReqMax += instance.MaxMembers;
+                        checkpointsInSettings++;
+                    }
+                }
+                formatted.Add($"Checkpoints: {checkpointsInSettings} | static members: {checkpointsOfficersReqMin}-{checkpointsOfficersReqMax} | actual performing: {behActiveCheckpoint}\n");
+
+                foreach (var instance in settings.Patrols)
+                {
+                    if (TimeManager.IsGivenTimeWithinRange(currentTime, instance.StartTime, instance.EndTime))
+                    {
+                        patrolsOfficersReqMin += instance.MinMembers;
+                        patrolsOfficersReqMax += instance.MaxMembers;
+                        patrolsInSettings++;
+                    }
+                }
+                formatted.Add($"FootPatrols: {patrolsInSettings} | static members: {patrolsOfficersReqMin}-{patrolsOfficersReqMax} | actual performing: {behActiveFootPatrol}\n");
+
+                foreach (var instance in settings.Sentries)
+                {
+                    if (TimeManager.IsGivenTimeWithinRange(currentTime, instance.StartTime, instance.EndTime))
+                    {
+                        sentriesOfficersReqMin += instance.MinMembers;
+                        sentriesOfficersReqMax += instance.MaxMembers;
+                        sentriesInSettings++;
+                    }
+                }
+                formatted.Add($"Sentries: {sentriesInSettings} | static members: {sentriesOfficersReqMin}-{sentriesOfficersReqMax} | actual performing: {behActiveSentry}\n");
+
+                foreach (var instance in settings.VehiclePatrols)
+                {
+                    if (TimeManager.IsGivenTimeWithinRange(currentTime, instance.StartTime, TimeManager.AddMinutesTo24HourTime(instance.latestStartTime, 60)))
+                    {
+                        vehiclepatrolsOfficersReqMin++;
+                        vehiclepatrolsInSettings++;
+                    }
+                }
+                formatted.Add($"VehiclePatrols: {vehiclepatrolsInSettings} | static members: {vehiclepatrolsOfficersReqMin} | actual performing: {behActiveVehiclePatrol}\n");
+
+                int sumMin = checkpointsOfficersReqMin + patrolsOfficersReqMin + sentriesOfficersReqMin + vehiclepatrolsOfficersReqMin;
+                int sumMax = checkpointsOfficersReqMax + patrolsOfficersReqMax + sentriesOfficersReqMax + vehiclepatrolsOfficersReqMin;
+                int absDiff = Mathf.Abs(PoliceOfficer.Officers.Count - sumMin);
+                string missingOrSurplus = PoliceOfficer.Officers.Count > sumMin ? $"Surplus {absDiff}" : $"Missing {absDiff}";
+                current += $"OFFICERS REQUIRED NOW: {sumMin}-{sumMax} | {missingOrSurplus}\n";
+
+                int sumBehActiveTotal = behActiveCheckpoint + behActiveFootPatrol + behActiveSentry + behActiveVehiclePatrol;
+                int staticMedianBehsActive = Mathf.RoundToInt((float)(sumMin + sumMax) / 2f);
+                int totalActivitiesCount = checkpointsInSettings + patrolsInSettings + sentriesInSettings + vehiclepatrolsInSettings;
+                current += $"ACTIVITIES TOTAL: {totalActivitiesCount} | STATIC MEDIAN: {staticMedianBehsActive} | BEHACTIVE: {sumBehActiveTotal}\n";
+
+                foreach (string formattedActivity in formatted)
+                {
+                    current += formattedActivity;
+                }
+
+                AnalyticsTextPanel.text = current;
+                return;
+            }
+
+            public void SetupAnalyticsUI(TextMeshProUGUI comp)
+            {
+                comp.transform.SetParent(Singleton<HUD>.Instance.canvas.transform, false);
+                comp.alignment = TextAlignmentOptions.TopLeft;
+                comp.fontSize = 16;
+                comp.color = Color.red;
+                comp.rectTransform.anchorMin = new Vector2(0, 1);
+                comp.rectTransform.anchorMax = new Vector2(0, 1);
+                comp.rectTransform.pivot = new Vector2(0, 1);
+                comp.rectTransform.anchoredPosition = new Vector2(40, -40);
+                comp.rectTransform.sizeDelta = new Vector2(600f, 500f);
+            }
+        }
+        public class SurveillanceTarget : ConsoleCommandBase
+        {
+            public override string Name => "surveillance";
+            public override CommandSupport SupportedMethods => CommandSupport.SpawnNoIndex | CommandSupport.Visualize;
+            public static bool hasDrawnVisuals = false;
+
+            public override void Spawn(int index)
+            {
+                Log("Enabling nearest Flock instance");
+                Vector3 pos = Player.Local.CenterPointTransform.position;
+                HylandFlockInstance nearest = null;
+                float nearestDist = 100f;
+
+                foreach (HylandFlockInstance inst in allCameras)
+                {
+                    if (inst.activeToday) continue;
+                    float instDist = Vector3.Distance(pos, inst.transform.position);
+                    if (instDist < nearestDist)
+                    {
+                        nearestDist = instDist;
+                        nearest = inst;
+                    }
+                }
+                nearest.ActivateInstance();
+                activeCameras.Add(nearest);
+                Log("Enabled");
+                return;
+            }
+            public override void Visualize(int index)
+            {
+                CleanVisual();
+
+                if (hasDrawnVisuals)
+                {
+                    hasDrawnVisuals = false;
+                    return;
+                }
+
+                for (int i = 0; i < activeCameras.Count; i++)
+                {
+                    Vector3 pos = activeCameras[i].transform.position;
+                    Vector3[] beamPos = new Vector3[] { pos, pos + Vector3.up * 40f };
+                    DrawPath($"ActiveFlock_{i}", beamPos);
+                }
+                hasDrawnVisuals = true;
+                Log("Active cameras visualized");
                 return;
             }
         }

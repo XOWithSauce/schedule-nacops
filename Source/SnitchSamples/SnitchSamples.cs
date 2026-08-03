@@ -1,12 +1,10 @@
-
-
 using System.Collections;
 using HarmonyLib;
 using MelonLoader;
 
-using static NACopsV1.BaseUtility;
-using static NACopsV1.NACops;
-using static NACopsV1.DebugModule;
+using static NACops.BaseUtility;
+using static NACops.NACops;
+using static NACops.DebugModule;
 
 #if MONO
 using ScheduleOne.Economy;
@@ -20,7 +18,7 @@ using Il2CppScheduleOne.PlayerScripts;
 using Il2CppScheduleOne.DevUtilities;
 #endif
 
-namespace NACopsV1
+namespace NACops
 {
 
     [HarmonyPatch(typeof(Customer), "SampleOffered")]
@@ -37,13 +35,11 @@ namespace NACopsV1
             if (!currentConfig.SnitchingSamples) yield break;
             yield return Wait5;
             if (!registered) yield break;
-            Player closestPlayer = Player.GetClosestPlayer(customer.transform.position, out _);
-            if (closestPlayer == null) yield break;
             (float min, float max) = ThresholdUtils.Evaluate(thresholdConfig.SnitchProbability, NetworkSingleton<TimeManager>.Instance.ElapsedDays);
             if (!currentConfig.DebugMode && UnityEngine.Random.Range(min, max) < 0.5f) yield break;
             Log("Snitching Samples");
-            coros.Add(MelonCoroutines.Start(LateInvestigation(closestPlayer)));
-            coros.Add(MelonCoroutines.Start(GiveFalseCharges(severity: 1, player: closestPlayer)));
+            coros.Add(MelonCoroutines.Start(LateInvestigation(Player.Local)));
+            coros.Add(MelonCoroutines.Start(GiveFalseCharges(severity: 1, player: Player.Local)));
         }
     }
 

@@ -2,9 +2,9 @@ using System.Collections;
 using MelonLoader;
 using UnityEngine;
 
-using static NACopsV1.BaseUtility;
-using static NACopsV1.NACops;
-using static NACopsV1.DebugModule;
+using static NACops.BaseUtility;
+using static NACops.NACops;
+using static NACops.DebugModule;
 
 #if MONO
 using ScheduleOne.GameTime;
@@ -22,7 +22,7 @@ using Il2CppScheduleOne.VoiceOver;
 using Il2CppScheduleOne.DevUtilities;
 #endif
 
-namespace NACopsV1
+namespace NACops
 {
 
     public static class NearbyCrazyCops
@@ -40,7 +40,7 @@ namespace NACopsV1
         {
             if (!networkManager.IsServer) yield break;
 
-            Log("Nearby Crazy Cop Enabled");
+            Log("Nearby Crazy Cop Starting");
             (minWait, maxWait) = ThresholdUtils.Evaluate(thresholdConfig.NearbyCrazyFrequency, NetworkSingleton<TimeManager>.Instance.ElapsedDays);
             randWaits = new()
             {
@@ -54,6 +54,8 @@ namespace NACopsV1
                 currentAwait = randWaits[UnityEngine.Random.Range(0, randWaits.Count)];
                 yield return currentAwait;
                 if (!registered) yield break;
+                if (!currentConfig.NearbyCrazyCops) continue;
+
                 Log("Nearby Crazy Cop Evaluate");
                 Player[] players = UnityEngine.Object.FindObjectsOfType<Player>(true);
 
@@ -76,17 +78,15 @@ namespace NACopsV1
                     player.CrimeData.CheckNearestOfficer();
                     PoliceOfficer officer = player.CrimeData.NearestOfficer;
                     if (officer == null) continue;
-
                     if (!CanProceed(officer, player, minDistance, ignoreVehicle:true)) continue;
 
-                    GUIDInUse.Add(officer.BakedGUID);
                     if (officer.IsInVehicle && player.IsInVehicle)
                     {
                         officer.VehiclePursuitBehaviour.AssignTarget(player);
                         officer.VehiclePursuitBehaviour.beginAsSighted = true;
                         officer.VehiclePursuitBehaviour.Activate();
                     }
-                    else if (!officer.IsInVehicle)
+                    else if (!officer.IsInVehicle && !player.IsInVehicle)
                     {
                         coros.Add(MelonCoroutines.Start(GreedyBodySearchFind(officer, player, minDistance)));
                     }
@@ -99,12 +99,14 @@ namespace NACopsV1
         {
             officer.ChatterVO.Play(EVOLineType.PoliceChatter);
             officer.Movement.FacePoint(player.transform.position, lerpTime: 0.4f);
+            GUIDInUse.Add(officer.BakedGUID);
 
             yield return Wait05;
             if (!registered) yield break;
 
             if (officer.Awareness.VisionCone.IsPlayerVisible(player) && !player.CrimeData.BodySearchPending)
             {
+                Log("Begin bodysearch nearby crazy");
                 officer.BeginBodySearch(player.PlayerCode);
                 if (UnityEngine.Random.Range(0f, 1f) > 0.8f)
                     coros.Add(MelonCoroutines.Start(GiveFalseCharges(severity: 2, player: player)));
@@ -120,7 +122,7 @@ namespace NACopsV1
 
             if (GUIDInUse.Contains(officer.BakedGUID))
                 GUIDInUse.Remove(officer.BakedGUID);
-            yield return null;
+            yield break;
         }
 
     }

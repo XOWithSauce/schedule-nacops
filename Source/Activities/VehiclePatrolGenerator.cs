@@ -1,10 +1,7 @@
-
-
-
 using UnityEngine;
 
-using static NACopsV1.ConfigLoader;
-using static NACopsV1.DebugModule;
+using static NACops.ConfigLoader;
+using static NACops.DebugModule;
 
 #if MONO
 using ScheduleOne.Law;
@@ -14,7 +11,7 @@ using Il2CppScheduleOne.Law;
 using Il2CppScheduleOne.NPCs.Behaviour;
 #endif
 
-namespace NACopsV1
+namespace NACops
 {
     public class VehiclePatrolGenerator
     {
@@ -38,6 +35,7 @@ namespace NACopsV1
                     Log($"- Days: {string.Join(" ", ser.days)}");
                     VehiclePatrolRoute route = newPatrolObject.AddComponent<VehiclePatrolRoute>();
                     route.name = ser.name;
+                    route.RouteName = ser.name;
                     route.StartWaypointIndex = 0;
 
                     Transform[] generatedWaypoints = new Transform[ser.waypoints.Count];

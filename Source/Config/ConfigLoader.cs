@@ -1,9 +1,9 @@
-
 using MelonLoader;
-using MelonLoader.Utils;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
 using UnityEngine;
+
+using static NACops.ModDataPaths;
 
 #if MONO
 using ScheduleOne.GameTime;
@@ -13,7 +13,7 @@ using Il2CppScheduleOne.GameTime;
 using Il2CppScheduleOne.Persistence;
 #endif
 
-namespace NACopsV1
+namespace NACops
 {
 
     // Because vector3 isnt just xyz for serialization, we remove everything except xyz from the base object properties
@@ -41,25 +41,16 @@ namespace NACopsV1
 
     public static class ConfigLoader
     {
-        private static string modConfig = Path.Combine(MelonEnvironment.ModsDirectory, "NACops", "config.json");
-        private static string officerConfig = Path.Combine(MelonEnvironment.ModsDirectory, "NACops", "officer.json");
-        private static string patrolsConfig = Path.Combine(MelonEnvironment.ModsDirectory, "NACops", "Spawn", "patrols.json");
-        private static string sentrysConfig = Path.Combine(MelonEnvironment.ModsDirectory, "NACops", "Spawn", "sentrys.json");
-        private static string vehiclePatrolsConfig = Path.Combine(MelonEnvironment.ModsDirectory, "NACops", "Spawn", "vehiclepatrols.json");
-        private static string eventFrequencyConfig = Path.Combine(MelonEnvironment.ModsDirectory, "NACops", "progression.json");
-        private static string raidConfig = Path.Combine(MelonEnvironment.ModsDirectory, "NACops", "raid.json");
-        private static string propertyHeatConfig = Path.Combine(MelonEnvironment.ModsDirectory, "NACops", "HeatData"); // /organisation.json
-
-
         #region Mod Configurations JSON
         public static ModConfig LoadModConfig()
         {
             ModConfig config;
-            if (File.Exists(modConfig))
+            string filePath = GetPathTo(pathModConfig);
+            if (File.Exists(filePath))
             {
                 try
                 {
-                    string json = File.ReadAllText(modConfig);
+                    string json = File.ReadAllText(filePath);
                     config = JsonConvert.DeserializeObject<ModConfig>(json);
                 }
                 catch (Exception ex)
@@ -77,18 +68,21 @@ namespace NACopsV1
             return config;
         }
 
-        public static void Save(ModConfig config)
+        public static void Save(ModConfig config, bool logConfirm = true)
         {
             try
             {
+                string filePath = GetPathTo(pathModConfig);
                 string json = JsonConvert.SerializeObject(config, Formatting.Indented);
-                Directory.CreateDirectory(Path.GetDirectoryName(modConfig));
-                File.WriteAllText(modConfig, json);
-                MelonLogger.Warning($"    NACops Mod config, written to: {modConfig}");
+                Directory.CreateDirectory(Path.GetDirectoryName(filePath));
+                File.WriteAllText(filePath, json);
+                if (logConfirm)
+                    MelonLogger.Warning($"NACops Mod config, written to: {filePath}");
             }
             catch (Exception ex)
             {
-                MelonLogger.Warning("Failed to save NACops Mod config: " + ex);
+                if (logConfirm)
+                    MelonLogger.Warning("Failed to save NACops Mod config: " + ex);
             }
 
         }
@@ -98,13 +92,30 @@ namespace NACopsV1
         public static NAOfficerConfig LoadOfficerConfig()
         {
             NAOfficerConfig config;
-            if (File.Exists(officerConfig))
+            string filePath = GetPathTo(pathOfficerConfig);
+            if (File.Exists(filePath))
             {
                 try
                 {
-                    string json = File.ReadAllText(officerConfig);
+                    string json = File.ReadAllText(filePath);
                     config = JsonConvert.DeserializeObject<NAOfficerConfig>(json);
                     config.ModAddedOfficersCount = Mathf.Clamp(config.ModAddedOfficersCount, 0, 20);
+
+                    List<string> supportedWeaponValues = new List<string>()
+                    {
+                        "m1911", "goldenm1911", "shotgun", "revolver"
+                    };
+                    if (!supportedWeaponValues.Contains(config.RangedWeapon))
+                    {
+                        // Ensure that its supported, if not set default
+                        config.RangedWeapon = "m1911";
+                    }
+
+                    foreach (var key in config.VisionSpeed.Keys.ToList())
+                    {
+                        // clamp to range
+                        config.VisionSpeed[key] = Mathf.Clamp(config.VisionSpeed[key], 0.01f, 10f);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -125,10 +136,11 @@ namespace NACopsV1
         {
             try
             {
+                string filePath = GetPathTo(pathOfficerConfig);
                 string json = JsonConvert.SerializeObject(config);
-                Directory.CreateDirectory(Path.GetDirectoryName(officerConfig));
-                File.WriteAllText(officerConfig, json);
-                MelonLogger.Warning($"    NACops Officers config, written to: {officerConfig}");
+                Directory.CreateDirectory(Path.GetDirectoryName(filePath));
+                File.WriteAllText(filePath, json);
+                MelonLogger.Warning($"NACops Officers config, written to: {filePath}");
             }
             catch (Exception ex)
             {
@@ -142,11 +154,12 @@ namespace NACopsV1
         public static FootPatrolsSerialized LoadPatrolsConfig()
         {
             FootPatrolsSerialized config;
-            if (File.Exists(patrolsConfig))
+            string filePath = GetPathTo(pathPatrolsConfig);
+            if (File.Exists(filePath))
             {
                 try
                 {
-                    string json = File.ReadAllText(patrolsConfig);
+                    string json = File.ReadAllText(filePath);
                     config = JsonConvert.DeserializeObject<FootPatrolsSerialized>(json);
 
                     List<string> weekdays = new() { "mon", "tue", "wed", "thu", "fri", "sat", "sun" };
@@ -155,7 +168,7 @@ namespace NACopsV1
                     foreach (SerializedFootPatrol ser in config.loadedPatrols)
                     {
                         ser.members = Mathf.Clamp(ser.members, 1, 4);
-                        ser.name = string.IsNullOrEmpty(ser.name) ? "NaCopsPatrol " : ser.name;
+                        ser.name = string.IsNullOrEmpty(ser.name) ? "NACopsPatrol " : ser.name;
                         ser.intensityRequirement = Mathf.Clamp(ser.intensityRequirement, 0, 10);
                         if (!TimeManager.IsValid24HourTime(ser.startTime.ToString()))
                         {
@@ -205,6 +218,7 @@ namespace NACopsV1
                 config.loadedPatrols = new();
                 Save(config);
             }
+
             return config;
         }
 
@@ -212,14 +226,15 @@ namespace NACopsV1
         {
             try
             {
+                string filePath = GetPathTo(pathPatrolsConfig);
                 var settings = new JsonSerializerSettings
                 {
                     ContractResolver = new UnityContractResolver()
                 };
                 string json = JsonConvert.SerializeObject(config, Formatting.Indented, settings);
-                Directory.CreateDirectory(Path.GetDirectoryName(patrolsConfig));
-                File.WriteAllText(patrolsConfig, json);
-                MelonLogger.Warning($"    Foot Patrols Config has been saved!");
+                Directory.CreateDirectory(Path.GetDirectoryName(filePath));
+                File.WriteAllText(filePath, json);
+                MelonLogger.Warning($"Foot Patrols Config has been saved!");
             }
             catch (Exception ex)
             {
@@ -232,11 +247,12 @@ namespace NACopsV1
         public static VehiclePatrolsSerialized LoadVehiclePatrolsConfig()
         {
             VehiclePatrolsSerialized config;
-            if (File.Exists(vehiclePatrolsConfig))
+            string filePath = GetPathTo(pathVehiclePatrolsConfig);
+            if (File.Exists(filePath))
             {
                 try
                 {
-                    string json = File.ReadAllText(vehiclePatrolsConfig);
+                    string json = File.ReadAllText(filePath);
                     config = JsonConvert.DeserializeObject<VehiclePatrolsSerialized>(json);
 
                     List<string> weekdays = new() { "mon", "tue", "wed", "thu", "fri", "sat", "sun" };
@@ -296,14 +312,15 @@ namespace NACopsV1
         {
             try
             {
+                string filePath = GetPathTo(pathVehiclePatrolsConfig);
                 var settings = new JsonSerializerSettings
                 {
                     ContractResolver = new UnityContractResolver()
                 };
                 string json = JsonConvert.SerializeObject(config, Formatting.Indented, settings);
-                Directory.CreateDirectory(Path.GetDirectoryName(vehiclePatrolsConfig));
-                File.WriteAllText(vehiclePatrolsConfig, json);
-                MelonLogger.Warning($"    Vehicle Patrols config has been saved!");
+                Directory.CreateDirectory(Path.GetDirectoryName(filePath));
+                File.WriteAllText(filePath, json);
+                MelonLogger.Warning($"Vehicle Patrols config has been saved!");
             }
             catch (Exception ex)
             {
@@ -316,12 +333,14 @@ namespace NACopsV1
         public static SentrysSerialized LoadSentryConfig()
         {
             SentrysSerialized config;
-            if (File.Exists(sentrysConfig))
+            string filePath = GetPathTo(pathSentrysConfig);
+            if (File.Exists(filePath))
             {
                 try
                 {
-                    string json = File.ReadAllText(sentrysConfig);
+                    string json = File.ReadAllText(filePath);
                     config = JsonConvert.DeserializeObject<SentrysSerialized>(json);
+                    
 
                     List<string> weekdays = new() { "mon", "tue", "wed", "thu", "fri", "sat", "sun" };
 
@@ -340,6 +359,12 @@ namespace NACopsV1
                         {
                             MelonLogger.Warning($"Sentry Config '{ser.name}' has invalid end time");
                             ser.endTime = 2330;
+                        }
+
+                        if (ser.minutesPerPoint <= 0 || ser.minutesPerPoint > 480)
+                        {
+                            MelonLogger.Warning($"Sentry Config '{ser.name}' has invalid minutes per point value. Range 1-480");
+                            ser.minutesPerPoint = 60;
                         }
 
                         // Validate weekdays
@@ -374,6 +399,7 @@ namespace NACopsV1
                 config.loadedSentrys = new();
                 Save(config);
             }
+
             return config;
         }
 
@@ -381,14 +407,15 @@ namespace NACopsV1
         {
             try
             {
+                string filePath = GetPathTo(pathSentrysConfig);
                 var settings = new JsonSerializerSettings
                 {
                     ContractResolver = new UnityContractResolver()
                 };
                 string json = JsonConvert.SerializeObject(config, Formatting.Indented, settings);
-                Directory.CreateDirectory(Path.GetDirectoryName(sentrysConfig));
-                File.WriteAllText(sentrysConfig, json);
-                MelonLogger.Warning($"    Sentry config has been saved!");
+                Directory.CreateDirectory(Path.GetDirectoryName(filePath));
+                File.WriteAllText(filePath, json);
+                MelonLogger.Warning($"Sentry config has been saved!");
             }
             catch (Exception ex)
             {
@@ -401,7 +428,6 @@ namespace NACopsV1
         public static string SanitizeAndFormatName(string orgName)
         {
             string saveFileName = orgName;
-
             if (saveFileName != null)
             {
                 saveFileName = saveFileName.Replace(" ", "_").ToLower();
@@ -424,13 +450,15 @@ namespace NACopsV1
         public static PropertiesHeatSerialized LoadPropertyHeats()
         {
             PropertiesHeatSerialized config;
-            string orgName = LoadManager.Instance.ActiveSaveInfo?.OrganisationName;
-            string fileName = SanitizeAndFormatName(orgName);
-            if (File.Exists(Path.Combine(propertyHeatConfig, fileName)))
+            string filePath = GetPathTo(pathPropertyHeatConfig);
+            string orgName = LoadManager.Instance.ActiveSaveInfo.OrganisationName;
+            int slotNumber = LoadManager.Instance.ActiveSaveInfo.SaveSlotNumber;
+            string fileName = $"{slotNumber}_{SanitizeAndFormatName(orgName)}";
+            if (File.Exists(Path.Combine(filePath, fileName)))
             {
                 try
                 {
-                    string json = File.ReadAllText(Path.Combine(propertyHeatConfig, fileName));
+                    string json = File.ReadAllText(Path.Combine(filePath, fileName));
                     config = JsonConvert.DeserializeObject<PropertiesHeatSerialized>(json);
                 }
                 catch (Exception ex)
@@ -458,6 +486,7 @@ namespace NACopsV1
 
         public static void Save(PropertiesHeatSerialized config, bool generateTemplate = false)
         {
+            string filePath = GetPathTo(pathPropertyHeatConfig);
 
             if (generateTemplate)
             {
@@ -473,14 +502,15 @@ namespace NACopsV1
 
             try
             {
-                string orgName = LoadManager.Instance.ActiveSaveInfo?.OrganisationName;
-                string fileName = SanitizeAndFormatName(orgName);
-                string saveDestination = Path.Combine(propertyHeatConfig, fileName);
+                string orgName = LoadManager.Instance.ActiveSaveInfo.OrganisationName;
+                int slotNumber = LoadManager.Instance.ActiveSaveInfo.SaveSlotNumber;
+                string fileName = $"{slotNumber}_{SanitizeAndFormatName(orgName)}";
+                string saveDestination = Path.Combine(filePath, fileName);
                 string json = JsonConvert.SerializeObject(config, Formatting.Indented);
                 Directory.CreateDirectory(Path.GetDirectoryName(saveDestination));
                 File.WriteAllText(saveDestination, json);
                 if (generateTemplate)
-                    MelonLogger.Warning($"    NACops Property Heat config, written to: {propertyHeatConfig}");
+                    MelonLogger.Warning($"NACops Property Heat config, written to: {saveDestination}");
             }
             catch (Exception ex)
             {
@@ -494,11 +524,12 @@ namespace NACopsV1
         public static ThresholdMappings LoadFrequencyConfig()
         {
             ThresholdMappings config;
-            if (File.Exists(eventFrequencyConfig))
+            string filePath = GetPathTo(pathEventFrequencyConfig);
+            if (File.Exists(filePath))
             {
                 try
                 {
-                    string json = File.ReadAllText(eventFrequencyConfig);
+                    string json = File.ReadAllText(filePath);
                     config = JsonConvert.DeserializeObject<ThresholdMappings>(json);
                     // Validate
                     foreach (MinMaxThreshold thres in config.LethalCopFrequency)
@@ -600,10 +631,11 @@ namespace NACopsV1
         {
             try
             {
+                string filePath = GetPathTo(pathEventFrequencyConfig);
                 string json = JsonConvert.SerializeObject(config, Formatting.Indented);
-                Directory.CreateDirectory(Path.GetDirectoryName(eventFrequencyConfig));
-                File.WriteAllText(eventFrequencyConfig, json);
-                MelonLogger.Warning($"    NACops Event Frequency config, written to: {eventFrequencyConfig}");
+                Directory.CreateDirectory(Path.GetDirectoryName(filePath));
+                File.WriteAllText(filePath, json);
+                MelonLogger.Warning($"NACops Event Frequency config, written to: {filePath}");
             }
             catch (Exception ex)
             {
@@ -617,11 +649,12 @@ namespace NACopsV1
         public static RaidConfig LoadRaidConfig()
         {
             RaidConfig config;
-            if (File.Exists(ConfigLoader.raidConfig))
+            string filePath = GetPathTo(pathRaidConfig);
+            if (File.Exists(filePath))
             {
                 try
                 {
-                    string json = File.ReadAllText(ConfigLoader.raidConfig);
+                    string json = File.ReadAllText(filePath);
                     config = JsonConvert.DeserializeObject<RaidConfig>(json);
                     // Validate to avoid extreme values
                     config.TraverseToPropertySpeed = Mathf.Clamp(config.TraverseToPropertySpeed, 0.1f, 1f);
@@ -630,6 +663,9 @@ namespace NACopsV1
                     config.RaidCopsCount = Mathf.Clamp(config.RaidCopsCount, 1, 10);
                     config.DaysUntilCanRaid = Mathf.Clamp(config.DaysUntilCanRaid, 1, 20);
                     config.PropertyHeatThreshold = Mathf.Clamp(config.PropertyHeatThreshold, 1, 100);
+                    config.RaiderMaxHealth = Mathf.Clamp(config.RaiderMaxHealth, 1, 300);
+                    config.RaiderWeaponDmg = Mathf.Clamp(config.RaiderWeaponDmg, 1, 100);
+
                 }
                 catch (Exception ex)
                 {
@@ -650,20 +686,68 @@ namespace NACopsV1
         {
             try
             {
+                string filePath = GetPathTo(pathRaidConfig);
                 string json = JsonConvert.SerializeObject(config, Formatting.Indented);
-                Directory.CreateDirectory(Path.GetDirectoryName(ConfigLoader.raidConfig));
-                File.WriteAllText(ConfigLoader.raidConfig, json);
-                MelonLogger.Warning($"    NACops Raid config, written to: {ConfigLoader.raidConfig}");
+                Directory.CreateDirectory(Path.GetDirectoryName(filePath));
+                File.WriteAllText(filePath, json);
+                MelonLogger.Warning($"NACops Raid config, written to: {filePath}");
             }
             catch (Exception ex)
             {
                 MelonLogger.Warning("Failed to save NACops Raid config: " + ex);
             }
+        }
+        #endregion
 
+        #region Mass Surveillance Config JSON
+        public static MassSurveillanceConfig LoadSurveillanceConfig()
+        {
+            MassSurveillanceConfig config;
+            string filePath = GetPathTo(pathSurveillanceConfig);
+            if (File.Exists(filePath))
+            {
+                try
+                {
+                    string json = File.ReadAllText(filePath);
+                    config = JsonConvert.DeserializeObject<MassSurveillanceConfig>(json);
+                    // Validate
+                    config.ActiveCamerasPerDay = Mathf.Clamp(config.ActiveCamerasPerDay, 1, 10);
+                    config.CameraNoticeCooldown = Mathf.Clamp(config.CameraNoticeCooldown, 1, 60);
+                    config.CameraActivationRange = Mathf.Clamp(config.CameraActivationRange, 1, 50);
+                    config.CameraNoticeSpeed = Mathf.Clamp(config.CameraNoticeSpeed, 1, 10);
+                }
+                catch (Exception ex)
+                {
+                    config = new MassSurveillanceConfig();
+                    MelonLogger.Warning("Failed to read NACops Mass Surveillance config: " + ex);
+                }
+            }
+            else
+            {
+                MelonLogger.Warning("Missing NACops Mass Surveillance config, creating directory and template.");
+                config = new MassSurveillanceConfig();
+                Save(config);
+            }
+            return config;
+        }
+
+        public static void Save(MassSurveillanceConfig config)
+        {
+            try
+            {
+                string filePath = GetPathTo(pathSurveillanceConfig);
+                string json = JsonConvert.SerializeObject(config, Formatting.Indented);
+                Directory.CreateDirectory(Path.GetDirectoryName(filePath));
+                File.WriteAllText(filePath, json);
+                MelonLogger.Warning($"NACops Mass Surveillance config, written to: {filePath}");
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Warning("Failed to save NACops Mass Surveillance config: " + ex);
+            }
         }
 
         #endregion
-
 
 
         [Serializable]
@@ -674,54 +758,87 @@ namespace NACopsV1
             public bool ExtraOfficerPatrols = true;
             public bool ExtraVehiclePatrols = true;
             public bool ExtraOfficerSentries = true;
+            public bool CheckpointsEnabled = true;
             public bool NoOpenCarryWeapons = true;
             public bool PrivateInvestigator = true;
             public bool WeedInvestigator = true;
             public bool CorruptCops = true;
             public bool SnitchingSamples = true;
             public bool BuyBusts = true;
+            public bool MassSurveillance = true;
             public bool NearbyCrazyCops = true;
-            public bool LethalCops = true;
+            public bool LethalCops = false;
             public bool RacistCops = false;
         }
 
         [Serializable]
         public class NAOfficerConfig
         {
-            public int ModAddedVehicleCount = 3;
             public int ModAddedOfficersCount = 8;
-            public bool CanEnterBuildings = true;
+            public bool CanEnterBuildings = true; // default false
+            public bool ShowNoticeIcons = true; // default true
+
             public bool OverrideArresting = true;
             public float ArrestTime = 1.25f; // def 1.75
             public float ArrestRange = 3.50f; //def 2.75
 
             public bool OverrideMovement = true;
-            public float MovementSpeedMultiplier = 1.7f;
+            public float MovementSpeedMultiplier = 1.45f; // default 1
 
             public bool OverrideWeapon = true;
-            public string WeaponPath = "Avatar/Equippables/M1911";
-            public float WeaponDamage = 46f;
-            public int WeaponMagSize = 20;
-            public float WeaponFireRate = 0.33f;
-            public float WeaponMaxRange = 25f;
-            public float WeaponReloadTime = 0.5f;
-            public float WeaponRaiseTime = 0.2f;
-            public float WeaponHitChanceMax = 0.3f;
-            public float WeaponHitChanceMin = 0.8f;
+            public string RangedWeapon = "m1911"; // default -> supported m1911, goldenm1911, shotgun, revolver
+            public float WeaponDamage = 46f; // default 35
+            public float WeaponAimTimeMax = 1.0f; // default 1.5f
+            public float WeaponAimTimeMin = 0.5f; // default 0.5
+            public int WeaponMagSize = 20; // default 7
+            public float WeaponFireRate = 0.33f; // default 1.5
+            public float WeaponMaxRange = 25f; // default 20
+            public float WeaponReloadTime = 0.5f; // default 3
+            public float WeaponRaiseTime = 0.2f; // default 1.5
+            public float WeaponHitChanceMax = 0.3f; // default 0.1
+            public float WeaponHitChanceMin = 0.8f; // default 0.8
+
+            public bool OverrideTaser = true;
+            public float TaserDamage = 5f; // default 0
+            public float TaserAimTimeMax = 1.0f; // default 1.5f
+            public float TaserAimTimeMin = 0.5f; // default 0.5
+            public float TaserFireRate = 3f; // default 5
+            public float TaserMaxRange = 15f; // default 10
+            public float TaserReloadTime = 1f; // default 2
+            public float TaserRaiseTime = 0.7f; // default 1
+            public float TaserHitChanceMax = 0.3f; // default 0.1
+            public float TaserHitChanceMin = 0.8f; // default 0.8
 
             public bool OverrideMaxHealth = true;
-            public float OfficerMaxHealth = 175f;
+            public float OfficerMaxHealth = 175f; // default 100
 
             public bool OverrideBodySearch = true;
-            public float BodySearchDuration = 6f;
-            public float BodySearchChance = 1f;
+            public float BodySearchDuration = 6f; // default 5
+            public float BodySearchChance = 1f; // default 0.4
 
+            // Overrides pursuit beh which is the main combat beh
             public bool OverrideCombatBeh = true;
-            public float CombatGiveUpRange = 40f;
-            public float CombatGiveUpTime = 60f;
-            public float CombatSearchTime = 60f;
-            public float CombatMoveSpeed = 6.8f;
-            public int CombatEndAfterHits = 40;
+            public float CombatGiveUpRange = 9999f; // default 9999 (e.g. infinite)
+            public float CombatSearchTime = 9999f; // default 9999 (e.g. infinite)
+            public float CombatMoveSpeed = 1.3f; // default 0.6f
+            public int CombatEndAfterHits = 0; // default 0 (e.g. infinite)
+
+            public bool OverrideVision = true;
+            public float VisionRangeMultiplier = 2.0f; // default 1.8 (can be 1-4) (at default 1.8 effective range = 45, at 2.0 = 50)
+            // How quickly officer notices certain crime types all remain default but changeable
+            public Dictionary<string, float> VisionSpeed = new()
+            {
+                {"Suspicious", 0.3f },
+                {"DisobeyingCurfew", 0.3f },
+                {"Vandalizing", 0.3f },
+                {"PettyCrime", 0.2f },
+                {"DrugDealing", 0.4f },
+                {"Wanted", 0.1f },
+                {"Pickpocketing", 0.3f },
+                {"DischargingWeapon", 0.1f },
+                {"Brandishing", 0.1f },
+            };
+
         }
 
         [Serializable] 
@@ -733,6 +850,24 @@ namespace NACopsV1
             public int RaidCopsCount = 3;
             public int DaysUntilCanRaid = 8;
             public int PropertyHeatThreshold = 14;
+            public float RaiderMaxHealth = 240f;
+            public float RaiderWeaponDmg = 65f;
+        }
+
+        [Serializable]
+        public class MassSurveillanceConfig
+        {
+            public bool UseUnidirectionalCameras = true;
+            public bool UseOmnidirectionalCameras = true;
+            public bool SurveilCrimeStatus = true;
+            public bool SurveilBaseCrimes = true;
+            public int ActiveCamerasPerDay = 5;
+            public int CameraActivationRange = 20;
+            public int CameraNoticeSpeed = 2;
+            public int CameraNoticeCooldown = 30;
+            public bool PayFinesFromBank = true;
+            public bool GrowPaymentsWithProgression = true; // When true scale with mod settings, when false use the below mult
+            public int CrimePaymentMultiplier = 1;
         }
 
         [Serializable]

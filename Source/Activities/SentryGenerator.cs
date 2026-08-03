@@ -1,9 +1,7 @@
-
-
 using UnityEngine;
 
-using static NACopsV1.ConfigLoader;
-using static NACopsV1.DebugModule;
+using static NACops.ConfigLoader;
+using static NACops.DebugModule;
 
 #if MONO
 using ScheduleOne.Law;
@@ -11,7 +9,7 @@ using ScheduleOne.Law;
 using Il2CppScheduleOne.Law;
 #endif
 
-namespace NACopsV1
+namespace NACops
 {
     public class SentryGenerator
     {
@@ -42,7 +40,6 @@ namespace NACopsV1
 
                     SentryLocation loc = newSentryObject.AddComponent<SentryLocation>();
                     loc.Routes = new();
-
                     
                     SentryLocation.SentryRoute newRoute = new();
 
@@ -61,8 +58,7 @@ namespace NACopsV1
                     newRoute.RoutePoints[0] = standPos1.transform;
                     newRoute.RoutePoints[1] = standPos2.transform;
 #endif
-
-                    newRoute.MinutesPerPoint = 60; // todo into json config??
+                    newRoute.MinutesPerPoint = ser.minutesPerPoint;
                     loc.Routes.Add(newRoute);
 
                     loc.gameObject.SetActive(true);
@@ -70,7 +66,8 @@ namespace NACopsV1
                     SentryInstance inst = new();
                     inst.StartTime = ser.startTime;
                     inst.EndTime = ser.endTime;
-                    inst.Members = ser.members;
+                    inst.MaxMembers = ser.members;
+                    inst.MinMembers = 1;
 #if MONO
                     inst._potentialLocations = [loc];
 #else
@@ -145,7 +142,10 @@ namespace NACopsV1
     {
         public int startTime = 1900;
         public int endTime = 500;
+
         public int members = 1;
+        public int minutesPerPoint = 60;
+
         public int intensityRequirement = 1;
         public bool onlyIfCurfew = false;
 
@@ -158,5 +158,6 @@ namespace NACopsV1
 
         public Vector3 standPosition2;
         public Vector3 pos2Rotation;
+
     }
 }

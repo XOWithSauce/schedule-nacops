@@ -1,4 +1,4 @@
-namespace NACopsV1
+namespace NACops
 {
     #region Utils for progression
     [Serializable]

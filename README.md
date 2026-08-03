@@ -10,22 +10,20 @@ NACops adds property raids, investigators and extends the configurability of the
 
 ---
 * [Features](#features)
-
 * [Installation](#installation)
-
+  * [Manual Installation](#manual-installation)
+  * [Config Files Locations](#config-files-locations)
 * [Property Raids](#property-raids)
   * [Info](#property-raids-info)
   * [Property Raids Configuration](#property-raids-configuration)
-
 * [Private Investigator](#private-investigator)
   * [Property Heat](#property-heat-data)
-
+* [Mass Surveillance](#mass-surveillance)
 * [In-Game Console](#in-game-console-support)
   * [List Indexes](#list)
   * [Spawn patrols, sentries, investigators or raids](#spawn)
   * [Visualize routes or sentries](#visualize)
   * [Build new routes or sentries](#build)
-
 * [Configuration](#configuration)
   * [Mod Configuration](#optional-mod-configuration-steps)
   * [Officer Configuration](#optional-officer-configuration-steps)
@@ -33,14 +31,15 @@ NACops adds property raids, investigators and extends the configurability of the
   * [Vehicle Patrol Configuration](#optional-vehicle-patrol-configuration-steps)
   * [Officer Sentry Configuration](#optional-officer-sentry-configuration-steps)
   * [Progression Difficulty Configuration](#optional-progression-difficulty-configuration)
-
+  * [Mass Surveillance Configuration](#optional-mass-surveillance-configuration)
 ---
 
 ## Features
 
 - Adds Property Raids and Property Heat system
 - Cops will occasionally appoint a disguised Private Investigator to monitor you
-- Adds configuration support for officers health, damage and movement
+- Adds functionality to security cameras, allowing police to track your crimes with them
+- Adds configuration support for officers weapons, health, damage and movement
 - Adds new Foot Patrols & Officer Sentries & Vehicle Patrols and allows for configuration of these activities
 - Cops will now try to search for players smoking illegal product and also apprehend the suspect
 - New customers will try to snitch on you resulting in Car Dispatches and Investigation
@@ -53,14 +52,32 @@ NACops adds property raids, investigators and extends the configurability of the
 
 ## Installation
 
-#### Important!
+> If you are using Thunderstore Mod Manager you can skip these steps and just install the mod through the manager and it will work.
 
-- **"alternate" or "alternate-beta" users**: Download the `NACopsV1-MONO` version.
-- **"default" or "beta" users**: Download the `NACopsV1-IL2CPP` version.
+- **"alternate" or "alternate-beta" users**: Download the `NACops-MONO` version.
+- **"default" or "beta" users**: Download the `NACops-IL2CPP` version.
 
-1. Install Melon Loader from a trusted source like [MelonWiki](https://melonwiki.xyz/).
-2. Copy the DLL file and the `NACops` into the `Mods` folder.
-3. You are good to go!
+### Manual installation
+
+1. Install **Melon Loader** from a trusted source like the official [MelonWiki](https://melonwiki.xyz/) and follow their setup instructions.
+2. With **Melon Loader** install version **0.7.3** for Schedule I
+3. Download the correct version and unzip the downloaded folder, here you will find the **Mods** folder containing the mod .dll file and **UserData** folder containing the mod data folder
+4. Copy the contents **Mods** folder into the **Steam/steamapps/common/Schedule I/Mods** folder
+5. Copy the contents of **UserData** folder into the **Steam/steamapps/common/Schedule I/UserData** folder
+
+### Config Files Locations
+
+If you install the mod manually you will find all the config files from the following directory:
+
+`UserData/XO_WithSauce-NACops/`
+
+If you installed with Thunderstore Mod manager the config files will be in the following directory:
+
+`UserData/XO_WithSauce-NACops_MONO/XO_WithSauce-NACops/`
+
+OR
+
+`UserData/XO_WithSauce-NACops_IL2CPP/XO_WithSauce-NACops/`
 
 
 ## Property Raids
@@ -136,21 +153,7 @@ The private investigator spawns randomly with increasing frequency based on your
 <img src="https://i.imgur.com/L4WO3cN.png">
 
 ---
-During the investigation the officer follows you around and tries to maintain a line of sight or stand nearby. While doing this they list all the properties you have entered, how many times you've been spotted and how many times you've been nearby.
-
-At the end of their 4 (ingame) hour shift, based on their investigation the property heats increase or decrease:
-
-- If the player spent **alot** of time inside a property and they are still inside that property and they have been spotted outside atleast once: 
-  - Property heat increases by 6 to 8
-
-- If the player spent **a bit** of time inside a property and they are still inside that property and they been spotted outside atleast once:
-  - Property heat increases by 4 to 5
-
-- If the player spent **a bit** of time inside a property, but they are not inside right now and they have been spotted outside atleast twice and the property heat is lower than 8:
-  - Property heat increases by 2 to 3
-
-- If the investigator didnt get enough evidence on a property so that none of the above have been met and if the property heat is above 5:
-  - Property heat decreases by 1 to 4
+During the investigation the officer follows you around and tries to maintain a line of sight or stand nearby. While doing this they list all the properties you have entered, how many times you've been spotted and how many times you've been nearby. At the end of their 4 (ingame) hour shift, based on their investigation the property heats increase or decrease.
 
 ---
 ### Property Heat Data
@@ -166,32 +169,32 @@ You can modify the content of this file and change the days passed or the curren
     {
       "propertyCode": "sweatshop",
       "propertyHeat": 0,
-      "daysSinceLastRaid": 4
+      "daysSinceLastRaid": 0
     },
     {
       "propertyCode": "bungalow",
       "propertyHeat": 0,
-      "daysSinceLastRaid": 4
+      "daysSinceLastRaid": 0
     },
     {
       "propertyCode": "storageunit",
       "propertyHeat": 0,
-      "daysSinceLastRaid": 4
+      "daysSinceLastRaid": 0
     },
     {
       "propertyCode": "dockswarehouse",
       "propertyHeat": 0,
-      "daysSinceLastRaid": 4
+      "daysSinceLastRaid": 0
     },
     {
       "propertyCode": "barn",
       "propertyHeat": 0,
-      "daysSinceLastRaid": 4
+      "daysSinceLastRaid": 0
     },
     {
       "propertyCode": "manor",
       "propertyHeat": 0,
-      "daysSinceLastRaid": 4
+      "daysSinceLastRaid": 0
     }
   ]
 }
@@ -201,9 +204,27 @@ You can modify the content of this file and change the days passed or the curren
 
 - **propertyHeat**: Accumulated property heat. Must be higher than `raid.json`->`PropertyHeatThreshold` for a raid to begin.
 
-- **daysSinceLastRaid**: Days passed since the last raid. Starts at 4 by default. Any owned properties will increase this by 1 each time player wakes up. Must be higher than `raid.json`->`DaysUntilCanRaid` for a raid to begin.
+- **daysSinceLastRaid**: Days passed since the last raid. Any owned properties will increase this by 1 each time player wakes up. Must be higher than `raid.json`->`DaysUntilCanRaid` for a raid to begin.
 
 
+## Mass Surveillance
+
+Cameras across the Hyland Point can now track the Players location and notice crimes, potentially alerting nearby officers or dispatching officers from station. Mass surveillance settings can be modified from the `surveillance.json` file. 
+
+- Active security cameras change each day
+- Active security cameras can be broken by hitting them or shooting them, in order to disable them. 
+- Active security cameras have a blue light on them and they render a blue beam whenever they notice a player
+
+### Unidirectional Cameras
+<img src="https://i.imgur.com/RCxp3NX.png">
+
+Unidirectional cameras are wall mounted cameras with limited frustrum.
+
+
+### Omnidirectional Cameras
+<img src="https://i.imgur.com/yeVfOOK.png">
+
+Omnidirectional cameras are half-sphere cameras with 360-degree coverage.
 
 ## In-Game Console Support
 
@@ -243,12 +264,15 @@ Example usage: `nacops spawn raid 1`
 Example usage: `nacops spawn investigator`
 > Spawn an investigator instantly. No index needed.
 
+Example usage: `nacops spawn surveillance`
+> Instantly enable nearest security camera to the player. No index needed.
+
 ---
 ---
 ### Visualize
 
 <img src="https://i.imgur.com/qPdzbie.png">
-You need to specify an index when visualizing a foot patrol, vehicle patrol or sentry. Only these can be visualized.
+You need to specify an index when visualizing a foot patrol, vehicle patrol or sentry.
 
 ---
 Example usage: `nacops visualize footpatrol 0`
@@ -260,7 +284,23 @@ Example usage: `nacops visualize sentry 2`
 Example usage: `nacops visualize vehiclepatrol 1`
 > Visualize the second index (1) of the mod added vehicle patrols route.
 ---
+
+You can also visualize the Mass Surveillance active camera positions.
+
+<img src="https://i.imgur.com/XDCnF9I.png">
+
+Example usage: `nacops visualize surveillance`
+> Visualize the active camera positions, no index needed.
+
 ---
+
+You can also visualize specific police related analytics to aid in mod configuring.
+
+Example usage: `nacops visualize analytics`
+> Display as text alot of information related to the police officers behaviours and amounts, no index needed.
+
+---
+
 ### Build
 
 You can build new foot patrol routes, vehicle patrol routes or sentries easily with a few commands. These get automatically saved to `Mods/NACops/Spawn/` with a random identifier. You can find your own generated builds by scrolling to the end of the file. The random identifier is printed into the Melon Loader Console when saving.
@@ -288,9 +328,12 @@ Example usage: 1st position: `nacops build sentry start` -> 2nd position: `nacop
 ## Configuration
 ### (Optional) Mod Configuration Steps:
 
-1. Open the `NACops` folder and locate the file called `config.json`.
+1. Open the `XO_WithSauce-NACops` folder and locate the file called `config.json`.
 2. The default contents of the `config.json` file are as follows:
-   
+
+You can alternatively change these settings with the **UserData/MelonPreferences.cfg**
+file OR the **Schedule I mod manager phone app**.
+
 ```json
 {
   "DebugMode": false,
@@ -298,12 +341,14 @@ Example usage: 1st position: `nacops build sentry start` -> 2nd position: `nacop
   "ExtraOfficerPatrols": true,
   "ExtraVehiclePatrols": true,
   "ExtraOfficerSentries": true,
+  "CheckpointsEnabled": true,
   "NoOpenCarryWeapons": true,
   "PrivateInvestigator": true,
   "WeedInvestigator": true,
   "CorruptCops": true,
   "SnitchingSamples": true,
   "BuyBusts": true,
+  "MassSurveillance": true,
   "NearbyCrazyCops": true,
   "LethalCops": false,
   "RacistCops": false
@@ -329,6 +374,10 @@ Example usage: 1st position: `nacops build sentry start` -> 2nd position: `nacop
   - true: Use the `Spawn/sentrys.json` file to create more Officer Sentries
   - false: Disabled
 
+- CheckpointsEnabled:
+  - true: Enable the usage of Road Checkpoints
+  - false: Disable all the Road Checkpoints
+
 - NoOpenCarryWeapons:
   - true: Makes holding weapons or having them in inventory illegal
   - false: Disabled
@@ -353,6 +402,10 @@ Example usage: 1st position: `nacops build sentry start` -> 2nd position: `nacop
 	- true: When you deal customers product, based on the customer relationship this might trigger a Buy Bust, spawning a Cop behind you!
 	- false: Disabled
 
+- MassSurveillance:
+	- true: Enable usage of security cameras across Hyland point
+	- false: Disabled
+
 - NearbyCrazyCops:
 	- true: Forces nearby cops to actively find you and initiate body search. If inside a vehicle this can trigger a vehicle pursuit.
 	- false: Disabled
@@ -368,20 +421,24 @@ Example usage: 1st position: `nacops build sentry start` -> 2nd position: `nacop
 ---
 ### (Optional) Officer Configuration Steps:
 
-1. Open the `NACops` folder and locate the file called `officer.json`.
+1. Open the `XO_WithSauce-NACops` folder and locate the file called `officer.json`.
 2. The default contents of the `officer.json` file are as follows:
 
 ```json
 {
-  "ModAddedVehicleCount": 3,
   "ModAddedOfficersCount": 8,
   "CanEnterBuildings": true,
+  "ShowNoticeIcons": true,
   "OverrideArresting": true,
   "ArrestTime": 1.25,
   "ArrestRange": 3.50,
   "OverrideMovement": true,
-  "MovementSpeedMultiplier": 1.65,
+  "MovementSpeedMultiplier": 1.45,
   "OverrideWeapon": true,
+  "RangedWeapon": "m1911",
+  "WeaponDamage": 46.0,
+  "WeaponAimTimeMax": 1.0,
+  "WeaponAimTimeMin": 0.5,
   "WeaponMagSize": 20,
   "WeaponFireRate": 0.33,
   "WeaponMaxRange": 25.0,
@@ -389,21 +446,41 @@ Example usage: 1st position: `nacops build sentry start` -> 2nd position: `nacop
   "WeaponRaiseTime": 0.2,
   "WeaponHitChanceMax": 0.3,
   "WeaponHitChanceMin": 0.8,
+  "OverrideTaser": true,
+  "TaserDamage": 5.0,
+  "TaserAimTimeMax": 1.0,
+  "TaserAimTimeMin": 0.5,
+  "TaserFireRate": 3.0,
+  "TaserMaxRange": 15.0,
+  "TaserReloadTime": 1.0,
+  "TaserRaiseTime": 0.7,
+  "TaserHitChanceMax": 0.3,
+  "TaserHitChanceMin": 0.8,
   "OverrideMaxHealth": true,
   "OfficerMaxHealth": 175.0,
   "OverrideBodySearch": true,
   "BodySearchDuration": 6.0,
   "BodySearchChance": 1.0,
   "OverrideCombatBeh": true,
-  "CombatGiveUpRange": 40.0,
-  "CombatGiveUpTime": 60.0,
-  "CombatSearchTime": 60.0,
-  "CombatMoveSpeed": 6.8,
-  "CombatEndAfterHits": 40
+  "CombatGiveUpRange": 9999.0,
+  "CombatSearchTime": 9999.0,
+  "CombatMoveSpeed": 1.3,
+  "CombatEndAfterHits": 0,
+  "OverrideVision": true,
+  "VisionRangeMultiplier": 2.0,
+  "VisionSpeed": {
+    "Suspicious": 0.3,
+    "DisobeyingCurfew": 0.3,
+    "Vandalizing": 0.3,
+    "PettyCrime": 0.2,
+    "DrugDealing": 0.4,
+    "Wanted": 0.1,
+    "Pickpocketing": 0.3,
+    "DischargingWeapon": 0.1,
+    "Brandishing": 0.1,
+  } 
 }
 ```
-- ModAddedVehicleCount:
-  - Increases the max cap of spawnable cars from Police Station
 
 - ModAddedOfficersCount:
   - How many additional officers to spawn into the world.
@@ -411,6 +488,10 @@ Example usage: 1st position: `nacops build sentry start` -> 2nd position: `nacop
 
 - CanEnterBuildings:
   - true: Officers can enter players properties. Player can enter their own properties while wanted.
+  - false: Disabled
+
+- ShowNoticeIcons:
+  - true: Officers will display the "?" and "!" Icons when seeing player committing crimes
   - false: Disabled
 
 - OverrideArresting:
@@ -422,8 +503,15 @@ Example usage: 1st position: `nacops build sentry start` -> 2nd position: `nacop
 	- false: Uses the game default settings on the officers or other mods settings.
 
 - OverrideWeapon:
-	- true: Apply the `WeaponMagSize`, `WeaponFireRate`, `WeaponMaxRange`, `WeaponReloadTime`, `WeaponRaiseTime`, `WeaponHitChanceMax` and `WeaponHitChanceMin` to the default M1911 gun
-	- false: Uses the game default settings on the officers or other mods settings.
+	- true: Apply the Weapon stats to the selected Ranged Weapon
+	- false: Uses the game default settings on the officers weapon or other mods settings.
+
+- RangedWeapon:
+	- Can be used to change police officers default weapon. Supported values are: "m1911", "goldenm1911", "revolver" and "shotgun" 
+
+- OverrideTaser:
+	- true: Apply the Taser stats to the taser
+	- false: Uses the game default settings on the officers taser or other mods settings.
 
 - OverrideMaxHealth:
 	- true: Apply the `OfficerMaxHealth`
@@ -434,18 +522,26 @@ Example usage: 1st position: `nacops build sentry start` -> 2nd position: `nacop
 	- false: Uses the game default settings on the officers or other mods settings.
 
 - OverrideCombatBeh:
-	- true: Apply the `CombatGiveUpRange`, `CombatGiveUpTime`, `CombatSearchTime`, `CombatMoveSpeed` and `CombatEndAfterHits`
+	- true: Apply the `CombatGiveUpRange`, `CombatSearchTime`, `CombatMoveSpeed` and `CombatEndAfterHits`
 	- false: Uses the game default settings on the officers or other mods settings.
+
+- OverrideVision:
+	- true: Apply the `VisionRangeMultiplier` and all of the `VisionSpeed` vision state settings to all officers
+	- false: Uses the game default settings on the officers vision or other mods settings.
+
+- VisionSpeed:
+  - Contains a list of all possible vision states and their respective times that it takes for officers to notice them. (Example, pickpocketing takes 0.3 seconds to notice)
+  - The vision speed values are all at default values, but you can change them if you want.
 
 ---
 ### (Optional) Foot Patrol Configuration Steps:
 
-1. Open the `NACops` folder and then `Spawn` folder and locate the file called `patrols.json`.
+1. Open the `XO_WithSauce-NACops` folder and then `Spawn` folder and locate the file called `patrols.json`.
 2. The `patrols.json` file contains multiple preset patrols. This file can be modified by removing, changing values or adding new patrols templates.
 3. The ModAddedOfficerCount in officers.json file should be increased when:
-  - Adding new templates
-  - Increasing officer counts 
-  - Activity length or weekdays
+    - Adding new templates
+    - Increasing officer counts 
+    - Increasing Activity length or weekdays
 
 4. Each added patrol contains following example config values:
 
@@ -506,7 +602,7 @@ Example usage: 1st position: `nacops build sentry start` -> 2nd position: `nacop
 ---
 ### (Optional) Vehicle Patrol Configuration Steps:
 
-1. Open the `NACops` folder and then `Spawn` folder and locate the file called `vehiclepatrols.json`.
+1. Open the `XO_WithSauce-NACops` folder and then `Spawn` folder and locate the file called `vehiclepatrols.json`.
 2. The `vehiclepatrols.json` file contains multiple preset patrols. This file can be modified by removing, changing values or adding new patrols templates.
 3. The ModAddedOfficerCount in officers.json file should be increased when:
   - Adding new templates
@@ -564,7 +660,7 @@ Example usage: 1st position: `nacops build sentry start` -> 2nd position: `nacop
 
 ### (Optional) Officer Sentry Configuration Steps:
 
-1. Open the `NACops` folder and locate the file called `sentrys.json`.
+1. Open the `XO_WithSauce-NACops` folder and locate the file called `sentrys.json`.
 2. The `sentrys.json` file contains multiple preset sentry positions. This file can be modified by removing, changing values or adding new patrols templates.
 3. The ModAddedOfficerCount in officers.json file should be increased when:
   - Adding new templates
@@ -578,6 +674,7 @@ Example usage: 1st position: `nacops build sentry start` -> 2nd position: `nacop
     "startTime": 2230,
     "endTime": 330,
     "members": 1,
+    "minutesPerPoint": 60,
     "intensityRequirement": 0,
     "onlyIfCurfew": false,
     "name": "Northtown Pharmacy Sentry",
@@ -614,7 +711,10 @@ Example usage: 1st position: `nacops build sentry start` -> 2nd position: `nacop
 
 - members:
   - How many officers partake in the activity
-  - Range 1-4
+  - Range 1 (limit)
+
+- minutesPerPoint:
+  - How long officer stands still before changing to the next standing position
 
 - intensityRequirement
   - Law intensity required for the activity to be enabled
@@ -641,7 +741,7 @@ Example usage: 1st position: `nacops build sentry start` -> 2nd position: `nacop
 
 ### (Optional) Progression difficulty configuration:
 
-1. Open the `NACops` folder and locate the file called `progression.json`.
+1. Open the `XO_WithSauce-NACops` folder and locate the file called `progression.json`.
 2. The `progression.json` file contains progression related thresholds and their respective random ranges. Each one is explained after the json file representation.
 3. You can modify these or add new ones based on your liking. The default configuration increases the difficulty and frequency of mod added events with progression.
 
@@ -754,7 +854,74 @@ Example usage: 1st position: `nacops build sentry start` -> 2nd position: `nacop
 
 ---
 
-> **Note**: The configuration files and directory structure described in this document will be created automatically in the `Mods/NACops/` directory if they are missing.
+### (Optional) Mass Surveillance configuration:
+
+1. Open the `XO_WithSauce-NACops` folder and locate the file called `surveillance.json`.
+2. The `surveillance.json` file contains the mass surveillance camera related config values and allows for changing crime fine payments. Each config value  is explained after the json file representation.
+3. The default contents of the `surveillance.json` file are as follows:
+```json
+{
+  "UseUnidirectionalCameras": true,
+  "UseOmnidirectionalCameras": true,
+  "SurveilCrimeStatus": true,
+  "SurveilBaseCrimes": true,
+  "ActiveCamerasPerDay": 5,
+  "CameraActivationRange": 20,
+  "CameraNoticeSpeed": 2,
+  "CameraNoticeCooldown": 30,
+  "PayFinesFromBank": true,
+  "GrowPaymentsWithProgression": true,
+  "CrimePaymentMultiplier": 1,
+}
+```
+
+- UseUnidirectionalCameras:
+  - true: Enable usage of unidirectional cameras as mass surveillance cameras
+  - false: Disabled
+
+- UseOmnidirectionalCameras:
+  - true: Enable usage of omnidirectional cameras as mass surveillance cameras
+  - false: Disabled
+
+- SurveilCrimeStatus:
+  - true: While the player has any crime status (e.g. Wanted or Under Arrest) the security cameras will notify police officers of the players location and reset the crime status progression back to start when seen
+  - false: Disabled
+
+- SurveilBaseCrimes:
+  - true: If player commits crimes, while the security camera is evaluating players presence, it stores info about crimes committed while in sight and potentially alerts nearby officers or dispatches units to location based on severity and accumulated evidence.
+  - false: Disabled
+
+- ActiveCamerasPerDay:
+  - Integer number that determines how many cameras are active each day
+  - Range: 1-10
+
+- CameraActivationRange:
+  - Integer number that determines how close player must be to an active camera, before the camera starts checking for players crimes and visibility
+  - Range: 1-50
+
+- CameraNoticeSpeed:
+  - Integer number that determines how many seconds player must be visible in total within the cameras line of sight before the camera can run its functionality
+  - Range: 1-10
+
+- CameraNoticeCooldown:
+  - Integer number that determines how long the camera will ignore player after it has finished noticing a player
+  - Range: 1-60
+
+- PayFinesFromBank:
+  - true: Enables the crime fine payment system to use bank balance, if the cash balance is not sufficient to pay for the fine
+  - false: Disabled
+
+- GrowPaymentsWithProgression:
+  - true: Increases the crime fine payments automatically based on players wealth and progression.
+  - false: Disabled
+
+- CrimePaymentMultiplier:
+  - Integer number that gets applies to each crime fine separately to increase the paid fine amount
+  - Note: `GrowPaymentsWithProgression` must be `false` for this to work!
+
+---
+
+> **Note**: The configuration files and directory structure described in this document will be created automatically in the `UserData` directory if they are missing.
 
 ---
 

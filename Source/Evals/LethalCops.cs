@@ -1,10 +1,9 @@
-
 using System.Collections;
 using UnityEngine;
 
-using static NACopsV1.BaseUtility;
-using static NACopsV1.NACops;
-using static NACopsV1.DebugModule;
+using static NACops.BaseUtility;
+using static NACops.NACops;
+using static NACops.DebugModule;
 
 #if MONO
 using ScheduleOne.GameTime;
@@ -20,7 +19,7 @@ using Il2CppScheduleOne.Police;
 using Il2CppScheduleOne.DevUtilities;
 #endif
 
-namespace NACopsV1
+namespace NACops
 {
 
     public static class LethalCops
@@ -55,6 +54,7 @@ namespace NACopsV1
                 currentAwait = randWaits[UnityEngine.Random.Range(0, randWaits.Count)];
                 yield return currentAwait;
                 if (!registered) yield break;
+                if (!currentConfig.LethalCops) continue;
 
                 // if threshold has changed update awaits now
                 float newMin;

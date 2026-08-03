@@ -1,10 +1,10 @@
-
 using System.Collections;
 using MelonLoader;
 using UnityEngine;
 
-using static NACopsV1.NACops;
-using static NACopsV1.DebugModule;
+using static NACops.NACops;
+using static NACops.DebugModule;
+using static NACops.CopInitHelper;
 
 #if MONO
 using ScheduleOne.DevUtilities;
@@ -12,23 +12,36 @@ using ScheduleOne.Law;
 using ScheduleOne.Map;
 using ScheduleOne.PlayerScripts;
 using ScheduleOne.Police;
-using FishNet.Managing.Object;
-using FishNet.Object;
 #else
 using Il2CppScheduleOne.DevUtilities;
 using Il2CppScheduleOne.Law;
 using Il2CppScheduleOne.Map;
 using Il2CppScheduleOne.PlayerScripts;
 using Il2CppScheduleOne.Police;
-using Il2CppFishNet.Managing.Object;
-using Il2CppFishNet.Object;
 #endif
 
-namespace NACopsV1
+namespace NACops
 {
     public static class BaseUtility
     {
         public static List<string> GUIDInUse = new List<string>();
+#if IL2CPP
+        // Because il2cpp Lists dont support shuffle add that back here
+        public static System.Random rngInstance = new System.Random();
+        public static void Shuffle<T>(this IList<T> list)
+        {
+            int n = list.Count;
+            while (n > 1)
+            {
+                n--;
+                int k = rngInstance.Next(n + 1);
+                T value = list[k];
+                list[k] = list[n];
+                list[n] = value;
+            }
+        }
+#endif
+
         public static IEnumerator AttemptWarp(PoliceOfficer offc, Transform target)
         {
 
@@ -58,19 +71,6 @@ namespace NACopsV1
         {
             float distToStation = Vector3.Distance(PoliceStation.GetClosestPoliceStation(pos).transform.position, pos);
             return distToStation < 20f;
-        }
-        public static void SetPoliceNPC()
-        {
-            PrefabObjects spawnablePrefabs = networkManager.SpawnablePrefabs;
-            for (int i = 0; i < spawnablePrefabs.GetObjectCount(); i++)
-            {
-                NetworkObject prefab = spawnablePrefabs.GetObject(true, i);
-                if (prefab?.gameObject?.name == "PoliceNPC")
-                {
-                    policeBase = prefab;
-                    break;
-                }
-            }
         }
         public static IEnumerator GiveFalseCharges(int severity, Player player)
         {
@@ -131,8 +131,10 @@ namespace NACopsV1
                 return false;
 
             if (!ignoreVehicle)
+            {
                 if (officer.Behaviour.activeBehaviour && officer.Behaviour.activeBehaviour == officer.VehiclePatrolBehaviour)
                     return false;
+            }
 
             if (officer.Behaviour.activeBehaviour && officer.Behaviour.activeBehaviour == officer.CheckpointBehaviour)
                 return false;
@@ -140,10 +142,10 @@ namespace NACopsV1
             if (GUIDInUse.Contains(officer.BakedGUID))
                 return false;
 
-            if (currentSummoned.Contains(officer))
+            if (currentDrugApprehender.Contains(officer))
                 return false;
 
-            if (currentDrugApprehender.Contains(officer))
+            if (officer == investigator || officer == buyBustCop)
                 return false;
 
             if (IsStationNearby(player.CenterPointTransform.position))

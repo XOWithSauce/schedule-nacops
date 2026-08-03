@@ -1,32 +1,30 @@
-
 using System.Collections;
 using HarmonyLib;
 using UnityEngine;
+using UnityEngine.Events;
+using MelonLoader;
 
-using static NACopsV1.NACops;
-using static NACopsV1.DebugModule;
-using static NACopsV1.AvatarUtility;
+using static NACops.NACops;
+using static NACops.DebugModule;
 
 #if MONO
 using ScheduleOne.AvatarFramework.Equipping;
 using ScheduleOne.NPCs.Behaviour;
-using ScheduleOne.Map;
-using ScheduleOne.NPCs;
 using ScheduleOne.Police;
-using ScheduleOne.AvatarFramework;
-using FishNet.Object;
+using ScheduleOne.Vision;
+using ScheduleOne.DevUtilities;
+using ScheduleOne.Vehicles;
 #else
 using Il2CppScheduleOne.AvatarFramework.Equipping;
 using Il2CppScheduleOne.NPCs.Behaviour;
-using Il2CppScheduleOne.Map;
-using Il2CppScheduleOne.NPCs;
 using Il2CppScheduleOne.Police;
-using Il2CppScheduleOne.AvatarFramework;
-using Il2CppFishNet.Object;
+using Il2CppScheduleOne.Vision;
+using Il2CppScheduleOne.DevUtilities;
+using Il2CppScheduleOne.Vehicles;
 #endif
 
 
-namespace NACopsV1
+namespace NACops
 {
 
 
@@ -70,102 +68,97 @@ namespace NACopsV1
     }
     #endregion
 
+    #region Harmony Patch weapon equip for override
+    [HarmonyPatch(typeof(PursuitBehaviour), "UpdateLethalBehaviour")]
+    public static class PursuitBehaviour_UpdateLethalBehaviour_Patch
+    {
+        private static readonly string functionName = "UpdateLethalBehaviour";
+        public static bool Prefix(PursuitBehaviour __instance)
+        {
+            // if config is false or gun is default dont patch this method
+            if (!officerConfig.OverrideWeapon) return true;
+            if (officerConfig.RangedWeapon.ToLower() == "m1911") return true;
+
+            // Otherwise identical except for the set weapon function
+            float num = Vector3.Distance(__instance.transform.position, __instance.TargetPlayer.Avatar.CenterPoint);
+            __instance.SetMovementSpeed(Mathf.Lerp(0.7f, 0.9f, Mathf.Clamp01(num / 6f)), "combat", 5);
+
+            // Setweapon function needs to be different so that it instantiates from that gunprefab
+            // instead of loading from resources because otherwise it wont have the custom stats
+            // applied (or needs to apply them each time again)
+            if (__instance.currentWeapon != null)
+            {
+                if (__instance.officer.GunPrefab.AssetPath == __instance.currentWeapon.AssetPath)
+                {
+                    return false;
+                }
+                __instance.ClearWeapon();
+            }
+
+            if (__instance.VirtualPunchWeapon == null)
+            {
+                //Log("Officer is missing VirtualPunchWeapon!", functionName);
+                return true;
+            }
+            if (__instance.VirtualPunchWeapon.onSuccessfulHit == null)
+            {
+                //Log("Officer is missing VirtualPunchWeapon.onSuccesfulHit event!", functionName);
+                __instance.VirtualPunchWeapon.onSuccessfulHit = new();
+            }
+            __instance.VirtualPunchWeapon.onSuccessfulHit.RemoveListener((UnityAction)__instance.SucessfulHit);
+
+            // Avatar setequip instantiated from custom prefab base
+            if (__instance.officer.Avatar.CurrentEquippable != null)
+            {
+                __instance.officer.Avatar.CurrentEquippable.Unequip();
+            }
+
+            __instance.officer.Avatar.CurrentEquippable = UnityEngine.Object.Instantiate<GameObject>(OfficerOverrides.rangedWeaponPrefab.gameObject, null).GetComponent<AvatarEquippable>();
+            __instance.officer.Avatar.CurrentEquippable.Equip(__instance.officer.Avatar);
+
+            // weapon equip
+#if MONO
+            __instance.currentWeapon = __instance.officer.Avatar.CurrentEquippable as AvatarWeapon;
+#else
+            __instance.currentWeapon = __instance.officer.Avatar.CurrentEquippable.TryCast<AvatarWeapon>();
+#endif
+            if (__instance.currentWeapon.onSuccessfulHit == null)
+            {
+                //Log("New weapon is missing onSuccesfulHit Event", functionName);
+                __instance.currentWeapon.onSuccessfulHit = new();
+            }
+            __instance.currentWeapon.onSuccessfulHit.AddListener((UnityAction)__instance.SucessfulHit);
+            if (__instance.currentWeapon == null)
+            {
+                //Log("Failed to equip weapon", functionName);
+                return false;
+            }
+            __instance.OnCurrentWeaponChanged(__instance.currentWeapon);
+
+            // dont run since mod handles identical logic
+            return false;
+        }
+    }
+#endregion
+
     public static class OfficerOverrides
     {
-#if MONO
-        public static List<PoliceOfficer> generatedOfficerPool = new(); // track ref
-#else
-        public static Il2CppSystem.Collections.Generic.List<PoliceOfficer> generatedOfficerPool = new();
-#endif
-        public static IEnumerator ExtendOfficerPool()
-        {
-#if MONO
-            PoliceStation station = PoliceStation.PoliceStations.FirstOrDefault();
-#else
-            if (PoliceStation.PoliceStations.Count == 0)
-                yield break;
-            PoliceStation station = PoliceStation.PoliceStations[0];
-#endif
-            if (station.Doors.Length == 0)
-            {
-                Log("Station doors is empty, failed to extend officer pool");
-                yield break;
-            }
-
-            for (int i = 0; i < station.OfficerPool.Count; i++)
-                generatedOfficerPool.Add(station.OfficerPool[i]);
-
-            for (int i = 0; i < officerConfig.ModAddedOfficersCount; i++)
-            {
-                PoliceOfficer offc = SpawnOfficerRuntime(i);
-                station.NPCEnteredBuilding(offc, station.Doors[0]);
-                generatedOfficerPool.Add(offc);
-                PoliceOfficer.Officers.Add(offc);
-                
-            }
-            station.OfficerPool = generatedOfficerPool;
-            yield return null;
-        }
-
-        public static PoliceOfficer SpawnOfficerRuntime(int i, bool autoDeactivate = true)
-        {
-            NetworkObject copNet = UnityEngine.Object.Instantiate<NetworkObject>(policeBase);
-            PoliceOfficer offc = copNet.gameObject.GetComponent<PoliceOfficer>();
-            offc.AutoDeactivate = autoDeactivate; // Prevent from returning to station and from being added to officer pool
-
-            NPC myNpc = copNet.gameObject.GetComponent<NPC>();
-            myNpc.ID = $"NACops_RuntimeOfficer_{i}";
-            myNpc.FirstName = "Officer";
-            myNpc.LastName = "";
-            myNpc.transform.parent = NPCManager.Instance.NPCContainer;
-
-            NPCManager.NPCRegistry.Add(myNpc);
-            networkManager.ServerManager.Spawn(copNet);
-            copNet.gameObject.SetActive(true);
-            copNet.name = $"NACops_RuntimeOfficer_{i}";
-            return offc;
-        }
-     
-        public static PoliceOfficer SpawnOfficerRuntime(bool autoDeactivate = true)
-        {
-            return SpawnOfficerRuntime(UnityEngine.Random.Range(1000, 6000), autoDeactivate);
-        }
-
+        public static AvatarEquippable rangedWeaponPrefab;
         public static IEnumerator SetOfficers()
         {
-            // offc belt is always unassigned on spawned ones 
-            foreach (PoliceOfficer officer in allActiveOfficers)
-            {
-                if (officer.belt != null) continue;
-                for (int j = 0; j < officer.Avatar.appliedAccessories.Length; j++)
-                {
-                    if (officer.Avatar.appliedAccessories[j] == null) continue;
-                    if (officer.Avatar.appliedAccessories[j].AssetPath == "Avatar/Accessories/Waist/PoliceBelt/PoliceBelt")
-                    {
-                        PoliceBelt beltComp = officer.Avatar.appliedAccessories[j].gameObject.GetComponent<PoliceBelt>();
-                        if (beltComp != null)
-                            officer.belt = beltComp;
-                        else
-                            Log("Belt component is null and cant assign");
-                        break;
-                    }
-                }
-            }
-            
+            bool hasInstantiatedRangedWeapon = false;
+            bool hasOverridenWeaponPrefab = false;
+            bool hasOverridenTaserPrefab = false;
 
             Log("Set officers foreach stats for " + allActiveOfficers.Count);
             foreach (PoliceOfficer officer in allActiveOfficers)
             {
                 yield return Wait01;
-                officer.Leniency = 0.1f;
-                officer.Suspicion = 1f;
 
-                SetRandomAvatar(officer);
+                officer.Awareness.VisionCone.WorldspaceIconsEnabled = officerConfig.ShowNoticeIcons;
 
                 if (officerConfig.CanEnterBuildings)
-                {
                     officer.Movement.Agent.areaMask = 57; // identical to employee
-                }
 
                 if (officerConfig.OverrideBodySearch)
                 {
@@ -174,9 +167,7 @@ namespace NACopsV1
                 }
 
                 if (officerConfig.OverrideMovement)
-                {
                     officer.Movement.MoveSpeedMultiplier = officerConfig.MovementSpeedMultiplier;
-                }
 
                 if (officerConfig.OverrideCombatBeh)
                 {
@@ -188,15 +179,67 @@ namespace NACopsV1
 
                 if (officerConfig.OverrideMaxHealth)
                 {
-                    officer.Health.MaxHealth = officerConfig.OfficerMaxHealth;
+                    officer.NPCData.Health.MaxHealth = officerConfig.OfficerMaxHealth;
                     officer.Health.Health = officerConfig.OfficerMaxHealth;
-                    if (officer.Health.IsDead || officer.Health.IsKnockedOut)
-                        officer.Health.Revive();
                 }
 
-                if (officerConfig.OverrideWeapon)
+                if (officerConfig.OverrideWeapon && !hasOverridenWeaponPrefab)
                 {
+                    // instantiate if not default
+                    Log("Setup Override Weapon");
+                    string resourcePath = "";
+
+                    switch (officerConfig.RangedWeapon.ToLower())
+                    {
+                        case "m1911":
+                            resourcePath = string.Empty;
+                            break;
+
+                        case "goldenm1911":
+                            resourcePath = "Avatar/Equippables/M1911_Gold";
+                            break;
+
+                        case "revolver":
+                            resourcePath = "Avatar/Equippables/Revolver";
+                            break;
+
+                        case "shotgun":
+                            resourcePath = "Avatar/Equippables/PumpShotgun";
+                            break;
+
+                        default:
+                            resourcePath = string.Empty;
+                            break;
+                    }
+
+                    // if not default instantiate
+                    if (!hasInstantiatedRangedWeapon && resourcePath != string.Empty)
+                    {
+                        Log("Instantiating custom weapon from path: " + resourcePath);
+#if MONO
+                        GameObject gameObject = Resources.Load(resourcePath) as GameObject;
+#else
+                        UnityEngine.Object obj = Resources.Load(resourcePath);
+                        GameObject gameObject = obj.TryCast<GameObject>();
+#endif
+                        if (gameObject == null)
+                        {
+                            Log($"Custom weapon was not found in built resources");
+                        }
+                        else
+                        {
+                            rangedWeaponPrefab = UnityEngine.Object.Instantiate<GameObject>(gameObject, new Vector3(0f, -5f, 0f), Quaternion.identity, null).GetComponent<AvatarEquippable>();
+                            if (!rangedWeaponPrefab.gameObject.activeSelf)
+                                rangedWeaponPrefab.gameObject.SetActive(true);
+                        }
+                        hasInstantiatedRangedWeapon = true;
+                    }
+
+                    // Override stats
                     AvatarRangedWeapon rangedWeapon = null;
+
+                    if (hasInstantiatedRangedWeapon && rangedWeaponPrefab != null)
+                        officer.GunPrefab = rangedWeaponPrefab;
 #if MONO
                     rangedWeapon = officer.GunPrefab as AvatarRangedWeapon;
 #else
@@ -204,31 +247,153 @@ namespace NACopsV1
 #endif
                     if (rangedWeapon != null)
                     {
-                        rangedWeapon.CanShootWhileMoving = true;
                         rangedWeapon.MagazineSize = officerConfig.WeaponMagSize;
                         rangedWeapon.MaxFireRate = officerConfig.WeaponFireRate;
+                        rangedWeapon.CooldownDuration = officerConfig.WeaponFireRate;
                         rangedWeapon.MaxUseRange = officerConfig.WeaponMaxRange;
                         rangedWeapon.ReloadTime = officerConfig.WeaponReloadTime;
                         rangedWeapon.RaiseTime = officerConfig.WeaponRaiseTime;
                         rangedWeapon.HitChance_MaxRange = officerConfig.WeaponHitChanceMax;
                         rangedWeapon.HitChance_MinRange = officerConfig.WeaponHitChanceMin;
-                        rangedWeapon.CooldownDuration = officerConfig.WeaponFireRate;
                         rangedWeapon.Damage = officerConfig.WeaponDamage;
+                        rangedWeapon.AimTime_Max = officerConfig.WeaponAimTimeMax;
+                        rangedWeapon.AimTime_Min = officerConfig.WeaponAimTimeMin;
                     }
+                    hasOverridenWeaponPrefab = true;
+                }
 
+                if (hasInstantiatedRangedWeapon && rangedWeaponPrefab != null)
+                {
+                    // override the field
+                    officer.GunPrefab = rangedWeaponPrefab;
+
+                    // Fix belt so that it shows the custom weapon
+                    // Find within the instantiated object, just the model gameobject to use for belt
+                    // and assign the correct local orientation + location 
+                    string modelTransformName = "";
+                    Vector3 selectedScale = Vector3.zero;
+                    Vector3 customPos = Vector3.zero;
+                    Vector3 customRot = Vector3.zero;
+                    switch (officerConfig.RangedWeapon.ToLower())
+                    {
+                        case "goldenm1911":
+                            modelTransformName = "M1911";
+                            selectedScale = new(0.008f, 0.008f, 0.008f);
+                            customPos = new(0.0016f, -0.0001f, -0.0007f);
+                            customRot = new(290f, 330f, 220f);
+                            break;
+
+                        case "revolver":
+                            modelTransformName = "Revolver_";
+                            selectedScale = new(0.008f, 0.008f, 0.008f);
+                            customPos = new(0.0016f, -0.0001f, -0.0008f);
+                            customRot = new(90f, 10f, 0f);
+                            break;
+
+                        case "shotgun":
+                            modelTransformName = "Shotgun";
+                            selectedScale = new(0.008f, 0.008f, 0.008f);
+                            customPos = new(0.0016f, -0.0005f, -0.0005f);
+                            customRot = new(80f, 150f, 150f);
+                            break;
+                    }
+                    Transform modelTr = rangedWeaponPrefab.transform.Find(modelTransformName);
+                    if (modelTr == null)
+                    {
+                        Log($"Failed to instantiate belt gun model! Missing prefab gun model transform object at {rangedWeaponPrefab.transform.GetScenePath()} / {modelTransformName}");
+                    }
+                    GameObject model = UnityEngine.Object.Instantiate(modelTr.gameObject);
+                    model.transform.parent = officer.belt.transform.GetChild(0);
+                    model.transform.localScale = selectedScale;
+                    model.transform.SetLocalPositionAndRotation(customPos, Quaternion.Euler(customRot));
+                    officer.belt.GunObject.SetActive(false);
+                    officer.belt.GunObject = model;
+                    if (!model.gameObject.activeSelf)
+                        model.gameObject.SetActive(true);
+                }
+
+                if (officerConfig.OverrideTaser && !hasOverridenTaserPrefab)
+                {
+                    Log("Overriding taser prefab");
+                    AvatarRangedWeapon rangedWeapon = null;
+#if MONO
+                    rangedWeapon = officer.TaserPrefab as AvatarRangedWeapon;
+#else
+                    rangedWeapon = officer.TaserPrefab.TryCast<AvatarRangedWeapon>();
+#endif
                     if (rangedWeapon != null)
                     {
-                        if (officer.Behaviour.CombatBehaviour.DefaultWeapon == null)
-                            officer.Behaviour.CombatBehaviour.DefaultWeapon = rangedWeapon;
+                        rangedWeapon.MaxFireRate = officerConfig.TaserFireRate;
+                        rangedWeapon.CooldownDuration = officerConfig.TaserFireRate;
+                        rangedWeapon.MaxUseRange = officerConfig.TaserMaxRange;
+                        rangedWeapon.ReloadTime = officerConfig.TaserReloadTime;
+                        rangedWeapon.RaiseTime = officerConfig.TaserRaiseTime;
+                        rangedWeapon.HitChance_MaxRange = officerConfig.TaserHitChanceMax;
+                        rangedWeapon.HitChance_MinRange = officerConfig.TaserHitChanceMin;
+                        rangedWeapon.Damage = officerConfig.TaserDamage;
+                        rangedWeapon.AimTime_Max = officerConfig.TaserAimTimeMax;
+                        rangedWeapon.AimTime_Min = officerConfig.TaserAimTimeMin;
                     }
-                    Log("  Overridden weapon");
+                    Log("  Overridden Taser");
+                    hasOverridenTaserPrefab = true;
                 }
+
+                if (officerConfig.OverrideVision)
+                {
+                    // apply the range
+                    officer.Awareness.VisionCone.RangeMultiplier = officerConfig.VisionRangeMultiplier;
+
+                    // apply a callback to the onExitVehicle due to a bug where the rangeMultiplier resets during it
+                    void OfficerExitedVehicle(LandVehicle _)
+                    {
+                        MelonCoroutines.Start(ResetVisionRange(officer));
+                    }
+
+#if MONO
+                    officer.onExitVehicle += (Action<LandVehicle>)OfficerExitedVehicle;
+#else
+                    officer.onExitVehicle += (Il2CppSystem.Action<LandVehicle>)OfficerExitedVehicle;
+#endif
+
+                    // for each mapped player within the current settings
+                    foreach (var keyPlayerValDict in officer.Awareness.VisionCone.stateSettings)
+                    {
+                        // foreach of the state settings entry
+                        foreach (var kvp in officer.Awareness.VisionCone.stateSettings[keyPlayerValDict.Key])
+                        {
+                            if (kvp.Key == EVisualState.Visible) continue; // skip
+
+                            // change based on the key string representation to match the config value
+                            if (officerConfig.VisionSpeed.TryGetValue(kvp.Key.ToString(), out float newSpeed))
+                            {
+                                // Notice time itself is unassignable but deterministic because of the code
+                                // so reverse that logic here
+                                float noticeTimeMult = newSpeed / 0.2f;
+                                officer.Awareness.VisionCone.stateSettings[keyPlayerValDict.Key][kvp.Key].NoticeTimeMultiplier = noticeTimeMult;
+                            }
+                            else
+                            {
+                                Log("Failed to find matching state container entry from config vision state settings: " + kvp.Key.ToString());
+                            }
+                        }
+                    }
+
+                    Log("  Overridden Vision");
+                }
+
+
             }
             Log("Officer properties complete");
             yield break;
         }
 
-        
+        public static IEnumerator ResetVisionRange(PoliceOfficer offc)
+        {
+            yield return Wait05;
+            if (!registered) yield break;
+            offc.Awareness.VisionCone.RangeMultiplier = officerConfig.VisionRangeMultiplier;
+            yield break;
+        }
     }
 
 }

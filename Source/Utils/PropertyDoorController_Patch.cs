@@ -1,7 +1,6 @@
-
 using HarmonyLib;
 
-using static NACopsV1.NACops;
+using static NACops.NACops;
 
 #if MONO
 using ScheduleOne.Building.Doors;
@@ -11,7 +10,7 @@ using Il2CppScheduleOne.Building.Doors;
 using Il2CppScheduleOne.Doors;
 #endif
 
-namespace NACopsV1
+namespace NACops
 {
     [HarmonyPatch(typeof(PropertyDoorController), "CanPlayerAccess")]
     public static class PropertyDoorController_CanPlayerAccess_Patch
@@ -24,6 +23,7 @@ namespace NACopsV1
             if (!registered) return;
             if (officerConfig == null) return;
             if (!officerConfig.CanEnterBuildings) return;
+            if (!__instance.Property.IsOwned) return;
             if (reason == "Police are nearby!")
                 __result = true;
             return;

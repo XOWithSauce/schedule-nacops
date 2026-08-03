@@ -1,27 +1,23 @@
-
-
 using MelonLoader;
 using UnityEngine;
 using System.Collections;
 using HarmonyLib;
 
-using static NACopsV1.NACops;
-using static NACopsV1.BaseUtility;
-using static NACopsV1.DebugModule;
+using static NACops.NACops;
+using static NACops.BaseUtility;
+using static NACops.DebugModule;
 
 #if MONO
-using ScheduleOne.Core;
 using ScheduleOne.PlayerScripts;
 using ScheduleOne.Police;
 using ScheduleOne.Product;
 #else
-using Il2CppScheduleOne.Core;
 using Il2CppScheduleOne.PlayerScripts;
 using Il2CppScheduleOne.Police;
 using Il2CppScheduleOne.Product;
 #endif
 
-namespace NACopsV1
+namespace NACops
 {
     [HarmonyPatch(typeof(Player), "ConsumeProduct")]
     public static class Player_ConsumeProduct_Patch
@@ -80,7 +76,7 @@ namespace NACopsV1
                 foreach (PoliceOfficer offc in allActiveOfficers)
                 {
                     yield return Wait01;
-                    if (GUIDInUse.Contains(offc.BakedGUID) || currentDrugApprehender.Contains(offc) || currentSummoned.Contains(offc)) continue;
+                    if (GUIDInUse.Contains(offc.BakedGUID) || currentDrugApprehender.Contains(offc)) continue;
                     if (Vector3.Distance(offc.transform.position, player.transform.position) > 50f) continue;
                     if (offc.Health.IsDead || offc.Health.IsKnockedOut) continue;
                     if (offc.Awareness.VisionCone.IsPlayerVisible(player) && offc.Movement.CanMove() && !offc.IsInVehicle && !offc.isInBuilding)

@@ -2,18 +2,17 @@ using System.Collections;
 using HarmonyLib;
 using MelonLoader;
 using UnityEngine;
+using UnityEngine.AI;
 
-using static NACopsV1.NACops;
-using static NACopsV1.DebugModule;
-using static NACopsV1.OfficerOverrides;
-using static NACopsV1.AvatarUtility;
+using static NACops.NACops;
+using static NACops.DebugModule;
+using static NACops.CopInitHelper;
 
 #if MONO
 using ScheduleOne.AvatarFramework.Equipping;
 using ScheduleOne.Economy;
 using ScheduleOne.ItemFramework;
 using ScheduleOne.Law;
-using ScheduleOne.NPCs;
 using ScheduleOne.PlayerScripts;
 using ScheduleOne.Police;
 using ScheduleOne.Quests;
@@ -30,12 +29,15 @@ using Il2CppScheduleOne.Police;
 using Il2CppScheduleOne.Quests;
 using Il2CppScheduleOne.UI.Handover;
 using Il2CppScheduleOne.VoiceOver;
+using Il2CppScheduleOne.AvatarFramework;
 #endif
-namespace NACopsV1
+namespace NACops
 {
     [HarmonyPatch(typeof(Customer), "ProcessHandover")]
     public static class Customer_ProcessHandover_Patch
     {
+        public static int cooldownHours = 3;
+
         [HarmonyPrefix]
 #if MONO
         public static bool Prefix(Customer __instance, HandoverScreen.EHandoverOutcome outcome, Contract contract, List<ItemInstance> items, bool handoverByPlayer, bool giveBonuses = true)
@@ -43,14 +45,20 @@ namespace NACopsV1
         public static bool Prefix(Customer __instance, HandoverScreen.EHandoverOutcome outcome, Contract contract, Il2CppSystem.Collections.Generic.List<ItemInstance> items, bool handoverByPlayer, bool giveBonuses = true)
 #endif
         {
-            coros.Add(MelonCoroutines.Start(PreProcessHandover(__instance, handoverByPlayer)));
+            MelonCoroutines.Start(PreProcessHandover(__instance, handoverByPlayer));
             return true;
         }
         public static IEnumerator PreProcessHandover(Customer __instance, bool handoverByPlayer)
         {
             if (!handoverByPlayer) yield break;
+            if (cooldownHours > 0)
+            {
+                Log($"Cant run buy bust, on cooldown: {cooldownHours}");
+                yield break;
+            }
+
             if (currentConfig.BuyBusts)
-                coros.Add(MelonCoroutines.Start(SummonBustCop(__instance)));
+                MelonCoroutines.Start(SummonBustCop(__instance));
             yield return null;
         }
         public static IEnumerator SummonBustCop(Customer customer)
@@ -58,39 +66,43 @@ namespace NACopsV1
             int relation = Mathf.RoundToInt(customer.NPC.RelationData.RelationDelta * 10f);
             (float min, float max) = ThresholdUtils.Evaluate(thresholdConfig.BuyBustProbability, relation);
             if (!currentConfig.DebugMode && UnityEngine.Random.Range(min, max) < 0.5f) yield break;
-            PoliceOfficer offc = SpawnOfficerRuntime(autoDeactivate: false);
-            offc.Movement.PauseMovement();
-            SetRandomAvatar(offc);
-            offc.Behaviour.ScheduleManager.DisableSchedule();
-            currentSummoned.Add(offc);
-            Player target = null;
+            Log("Spawn buy bust");
+            cooldownHours = 3;
+
+            buyBustCop.gameObject.SetActive(true);
+            buyBustCop.transform.Find("Avatar").gameObject.SetActive(true);
+            buyBustCop.GetComponent<NavMeshAgent>().enabled = true;
+            if (!buyBustCop.Movement.IsPaused)
+                buyBustCop.Movement.PauseMovement();
+            buyBustCop.Awareness.SetAwarenessActive(true);
+
+            Player target = Player.Local;
             Vector3 spawnPos = customer.transform.position + customer.transform.forward * 3f;
-            bool flag = offc.Movement.GetClosestReachablePoint(spawnPos, out Vector3 closest);
+            bool flag = buyBustCop.Movement.GetClosestReachablePoint(spawnPos, out Vector3 closest);
+            bool instantDeactivate = false;
             if (flag && closest != Vector3.zero)
             {
-                coros.Add(MelonCoroutines.Start(SetTaser(offc)));
-                offc.Movement.Warp(closest);
-                offc.Movement.ResumeMovement();
-                Log("Drug bust officer spawned now at " + offc.CenterPoint);
-                offc.ChatterVO.Play(EVOLineType.Command);
-                offc.Movement.FacePoint(customer.transform.position);
-                target = Player.GetClosestPlayer(closest, out _);
+                buyBustCop.Movement.Warp(closest);
+                buyBustCop.Movement.ResumeMovement();
+                Log("Drug bust officer spawned now at " + buyBustCop.CenterPoint);
+                buyBustCop.ChatterVO.Play(EVOLineType.Command);
+                buyBustCop.Movement.FacePoint(customer.transform.position);
                 target.CrimeData.SetPursuitLevel(PlayerCrimeData.EPursuitLevel.NonLethal);
-                offc.BeginFootPursuit(target.PlayerCode);
-                offc.PursuitBehaviour.Enable_Networked();
+                buyBustCop.BeginFootPursuit(target.PlayerCode);
+                buyBustCop.PursuitBehaviour.Enable_Networked();
+                coros.Add(MelonCoroutines.Start(SetTaser(buyBustCop)));
                 // Needs to momentarily disable arrest or almost insta arrest;
-                coros.Add(MelonCoroutines.Start(LateEnableArrest(offc)));
+                coros.Add(MelonCoroutines.Start(LateEnableArrest(buyBustCop)));
                 target.CrimeData.AddCrime(new AttemptingToSell(), 10);
             }
             else
             {
                 Log("Failed to Get closest reachable position for drug bust");
-                coros.Add(MelonCoroutines.Start(DisposeSummoned(offc, true, target)));
+                instantDeactivate = true;
             }
-            coros.Add(MelonCoroutines.Start(DisposeSummoned(offc, false, target)));
+            coros.Add(MelonCoroutines.Start(DisposeSummoned(instantDeactivate, target)));
             yield break;
         }
-
         public static IEnumerator LateEnableArrest(PoliceOfficer offc)
         {
             float maxWait = 8f;
@@ -131,40 +143,52 @@ namespace NACopsV1
                 rangedWeapon.CooldownDuration = 0.3f;
             }
 
-            yield return null;
+            yield break;
         }
-        public static IEnumerator DisposeSummoned(PoliceOfficer offc, bool instant, Player target)
+        public static IEnumerator DisposeSummoned(bool instant, Player target)
         {
             yield return Wait1;
             if (!registered) yield break;
 
             int lifeTime = 0;
-            int maxTime = 20;
-            NPC npc = offc.NetworkObject.GetComponent<NPC>();
+            int maxTime = 30;
 
-            if (!instant && target != null && npc != null)
+            if (!instant && target != null && buyBustCop != null)
             {
-                while (lifeTime <= maxTime || target.IsArrested || npc.Health.IsDead || npc.Health.IsKnockedOut)
+                while (lifeTime <= maxTime)
                 {
+                    if (target.IsArrested || !buyBustCop.IsConscious) break;
                     lifeTime++;
                     yield return Wait1;
                     if (!registered) yield break;
                 }
             }
-            try
+
+
+            if (!buyBustCop.IsConscious)
             {
-                if (currentSummoned.Contains(offc))
-                    currentSummoned.Remove(offc);
-                if (npc != null && NPCManager.NPCRegistry.Contains(npc))
-                    NPCManager.NPCRegistry.Remove(npc);
-                if (npc != null && npc.gameObject != null)
-                    UnityEngine.Object.Destroy(npc.gameObject);
+                yield return Wait30;
+                buyBustCop.Health.Revive();
             }
-            catch (Exception ex)
-            {
-                MelonLogger.Error(ex);
-            }
+
+            buyBustCop.Awareness.SetAwarenessActive(false);
+
+            buyBustCop.gameObject.SetActive(false);
+
+            buyBustCop.transform.Find("Avatar").gameObject.SetActive(false);
+
+            if (!buyBustCop.Movement.IsPaused)
+                buyBustCop.Movement.PauseMovement();
+            buyBustCop.GetComponent<NavMeshAgent>().enabled = false;
             Log("Disposed summoned bustcop");
+            yield break;
+        }
+
+        public static void ReduceBuyBustHours()
+        {
+            if (cooldownHours > 0)
+                cooldownHours -= 1;
+            Log($"Reduce buy bust hours now: {cooldownHours}");
         }
     }
 

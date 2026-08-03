@@ -1,4 +1,5 @@
-using static NACopsV1.DebugModule;
+using static NACops.DebugModule;
+using static NACops.NACops;
 
 #if MONO
 using ScheduleOne.Core.Items.Framework;
@@ -14,7 +15,7 @@ using Il2CppScheduleOne.PlayerScripts;
 using Il2CppScheduleOne.Vision;
 #endif
 
-namespace NACopsV1
+namespace NACops
 {
 
     public static class NoticeOpenCarry
@@ -29,11 +30,10 @@ namespace NACopsV1
         #region Check for player equip slot is weapon and update visibility
         public static void CheckSlotItem()
         {
-            Log("Checking slot: " + PlayerSingleton<PlayerInventory>.Instance.EquippedSlotIndex);
             int current = PlayerSingleton<PlayerInventory>.Instance.EquippedSlotIndex;
             if (current >= 0 && current < 8)
             {
-                ItemInstance item = Player.Local.Inventory[current].ItemInstance;
+                ItemInstance item = Player.Local._inventory[current].ItemInstance;
                 if (item != null)
                 {
                     if (weaponIDs.Contains(item.ID))
@@ -58,6 +58,8 @@ namespace NACopsV1
 
         public static void OnSlotChanged(int _)
         {
+            if (!currentConfig.NoOpenCarryWeapons) return;
+
             if (!IsCheckingSlot)
             {
                 IsCheckingSlot = true;
@@ -66,6 +68,7 @@ namespace NACopsV1
         }
         public static void OnPlayerArrested()
         {
+            if (!currentConfig.NoOpenCarryWeapons) return;
             //Log("RemoveState Brandishing");
             Player.Local.VisualState.RemoveState("Brandishing", 0f);
         }
@@ -90,6 +93,8 @@ namespace NACopsV1
         #region Change Weapons to be illegal in inventory
         public static void SetWeaponsLegalStatus()
         {
+            if (!currentConfig.NoOpenCarryWeapons) return;
+
             Func<string, ItemDefinition> GetItem;
 #if MONO
             GetItem = ScheduleOne.Registry.GetItem;

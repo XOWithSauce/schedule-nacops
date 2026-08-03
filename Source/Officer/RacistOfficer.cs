@@ -3,8 +3,8 @@ using MelonLoader;
 using System.Collections;
 using UnityEngine;
 
-using static NACopsV1.NACops;
-using static NACopsV1.DebugModule;
+using static NACops.NACops;
+using static NACops.DebugModule;
 
 #if MONO
 using ScheduleOne.Map;
@@ -16,7 +16,7 @@ using Il2CppScheduleOne.PlayerScripts;
 using Il2CppScheduleOne.Police;
 #endif
 
-namespace NACopsV1
+namespace NACops
 {
     public static class RacistOfficers
     {
@@ -37,6 +37,9 @@ namespace NACopsV1
             while (registered)
             {
                 yield return Wait2;
+                if (!registered) yield break;
+                if (!currentConfig.RacistCops) continue;
+
                 foreach (Player player in blackPlayers)
                 {
                     if (player.CurrentProperty != null)
@@ -57,6 +60,7 @@ namespace NACopsV1
                     foreach (PoliceOfficer officer in allActiveOfficers)
                     {
                         yield return Wait05;
+                        if (!registered) yield break;
                         if (officer.Behaviour.activeBehaviour && (officer.Behaviour.activeBehaviour == officer.PursuitBehaviour || officer.Behaviour.activeBehaviour == officer.VehiclePursuitBehaviour)) continue;
                         if (Vector3.Distance(officer.CenterPoint, player.CenterPointTransform.position) < 80f)
                         {
@@ -82,12 +86,13 @@ namespace NACopsV1
                     yield return Wait30;
                 }
             }
-            yield return null;
+            yield break;
         }
 
         public static IEnumerator TempDisableArrest(PoliceOfficer offc)
         {
             yield return Wait30;
+            if (!registered) yield break;
             offc.PursuitBehaviour.arrestingEnabled = true;
             yield return false;
         }

@@ -1,6 +1,7 @@
 using HarmonyLib;
-using static NACopsV1.PrivateInvestigator;
-using static NACopsV1.RaidPropertyEvent;
+using static NACops.PrivateInvestigator;
+using static NACops.RaidPropertyEvent;
+using static NACops.CopInitHelper;
 
 #if MONO
 using ScheduleOne.PlayerScripts;
@@ -14,9 +15,9 @@ using Il2CppScheduleOne.Law;
 using Il2CppScheduleOne.DevUtilities;
 #endif
 
-using static NACopsV1.NACops;
+using static NACops.NACops;
 
-namespace NACopsV1
+namespace NACops
 {
     // Fixes a bug where during curfew player can be arrested multiple times in their property
     // Should run for both server and clients to force block the processing
@@ -29,17 +30,19 @@ namespace NACopsV1
         public static bool Prefix(VisionCone __instance, ISightable sightable, EVisualState state, ref bool enabled)
         {
             int instanceId = __instance.transform.root.gameObject.GetInstanceID();
-            if (currentPICount != 0 && investigatorObjectIDs.Contains(instanceId))
+            if (investigatorActive && instanceId == investigatorID)
             {
-                // Because dictionary entry wont exist dont run
+                
                 if (PIdisabledVisualStates.Contains(state))
-                    return false;
+                    enabled = false;
+                return true;
             }
             else if (raidActive && raidOfficerObjIDs.Contains(instanceId))
             {
-                // Because dictionary entry wont exist dont run
+                
                 if (raiderDisabledVisualStates.Contains(state))
-                    return false;
+                    enabled = false;
+                return true;
             }
 
             // During curfew if player was recently arrested or in property dont process vision event

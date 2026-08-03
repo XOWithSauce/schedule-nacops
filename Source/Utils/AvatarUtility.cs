@@ -2,65 +2,129 @@
 using System.Collections;
 using UnityEngine;
 
-using static NACopsV1.PrivateInvestigator;
-using static NACopsV1.RuntimeImpostor;
-using static NACopsV1.NACops;
+using static NACops.PrivateInvestigator;
+using static NACops.RuntimeImpostor;
+using static NACops.NACops;
 
 #if MONO
 using ScheduleOne.AvatarFramework;
 using ScheduleOne.Police;
+using ScheduleOne.VoiceOver;
+using ScheduleOne.NPCs;
 using static ScheduleOne.AvatarFramework.AvatarSettings;
 #else
 using Il2CppScheduleOne.AvatarFramework;
 using Il2CppScheduleOne.Police;
+using Il2CppScheduleOne.VoiceOver;
+using Il2CppScheduleOne.NPCs;
 using static Il2CppScheduleOne.AvatarFramework.AvatarSettings;
 #endif
 
-namespace NACopsV1
+namespace NACops
 {
     public static class AvatarUtility
     {
-        public static List<Color> skinColors = new()
+        #region Avatar randomization constants
+        public static readonly List<Color> skinColors = new()
         {
             new Color(0.729412f, 0.596078f, 0.541176f),
-            new Color(0.785234f, 0.643633f, 0.584633f),
+            new Color(0.7768f, 0.5931f, 0.4442f),
             new Color(0.364705f, 0.298039f, 0.270588f),
             new Color(0.454902f, 0.372549f, 0.337255f),
+            new Color(0.7768f, 0.5931f, 0.4442f)
         };
-
-        public static List<string> randomFaceLayers = new()
+        public static readonly List<string> randomFaceLayers = new()
         {
-            "Avatar/Layers/Face/Face_SmugPout", 
-            "Avatar/Layers/Face/Face_SlightSmile", 
-            "Avatar/Layers/Face/Face_Neutral"
+            "Avatar/Layers/Face/Face_SmugPout",
+            "Avatar/Layers/Face/Face_SlightSmile",
+            "Avatar/Layers/Face/Face_Neutral",
+            "Avatar/Layers/Face/Face_NeutralPout",
         };
-
-        public static List<string> randomMaleHairLayers = new()
+        public static readonly List<string> randomMaleHairLayers = new()
         {
-            "Avatar/Hair/Balding/Balding", 
-            "Avatar/Hair/BuzzCut/BuzzCut", 
+            "Avatar/Hair/Balding/Balding",
+            "Avatar/Hair/BuzzCut/BuzzCut",
+            "Avatar/Hair/Peaked/Peaked",
         };
-        public static List<string> randomFemaleHairLayers = new()
+        public static readonly List<string> randomFacialHairLayers = new()
+        {
+            "Avatar/Layers/Face/FacialHair_Swirl",
+            "Avatar/Layers/Face/FacialHair_Goatee"
+        };
+        public static readonly List<string> randomFemaleHairLayers = new()
         {
             "Avatar/Hair/MidFringe/MidFringe",
-            "Avatar/Hair/LowBun/LowBun"
+            "Avatar/Hair/LowBun/LowBun",
+            "Avatar/Hair/DoubleTopKnot/DoubleTopKnot"
         };
-        
-        public static List<Color> randomHairColors = new()
+        public static readonly List<Color> randomHairColors = new()
         {
             new Color(0.141176f, 0.109803f, 0.066666f),
             new Color(0.666666f, 0.533333f, 0.4f),
             new Color(0.501960f, 0.501965f, 0.5019607f),
             new Color(0.294117f, 0.196078f, 0.121568f),
+            new Color(0.6071f, 0.3886f, 0.087f),
+            new Color(0.0804f, 0.0699f, 0.0624f),
+            new Color(0.1278f, 0.1278f, 0.1278f)
         };
 
-        public static void SetRandomAvatar(PoliceOfficer offc)
+		public static Dictionary<int, List<Color>> PIColorPalettes = new()
+		{
+            // Brown Blazer + Cap, blue shirt, gray pants
+            {0, new List<Color>()
+			{
+				new Color(0.396f, 0.396f, 0.396f), // jeans
+                new Color(0.326f, 0.578f, 0.896f), // shirt
+                new Color(0.151f, 0.151f, 0.151f), // sneakers
+                new Color(0.613f, 0.493f, 0.344f), // (rand) blazer
+                new Color(0.613f, 0.493f, 0.344f)  // (rand) cap
+            }},
+
+            // Gray Blazer + Cap, orange shirt, blue pants
+            {1, new List<Color>()
+			{
+				new Color(0.2588f, 0.3647f, 0.5490f), // jeans
+                new Color(0.7137f, 0.2941f, 0.1568f), // shirt
+                Color.black,                          // sneakers
+                new Color(0.1372f, 0.1058f, 0.0823f), // (rand) blazer
+                new Color(0.1372f, 0.1058f, 0.0823f)  // (rand) cap
+            }},
+
+            // Dark Gray Blazer + Light Gray Cap, blue shirt, blue pants
+            {2, new List<Color>()
+			{
+				new Color(0.258f, 0.364f, 0.549f), // jeans
+                new Color(0.326f, 0.578f, 0.896f), // shirt
+                Color.black,                       // sneakers
+                new Color(0.121f, 0.094f, 0.078f), // (rand) blazer
+                new Color(0.772f, 0.772f, 0.772f)  // (rand) cap
+            }},
+
+            // gray Blazer + Light Gray Cap, black shirt, brown pants
+            {3, new List<Color>()
+			{
+				new Color(0.615f, 0.478f, 0.313f), // jeans
+                Color.black,                       // shirt
+                Color.black,                       // sneakers
+                new Color(0.396f, 0.396f, 0.396f), // (rand) blazer
+                new Color(0.772f, 0.772f, 0.772f)  // (rand) cap
+            }},
+		};
+        #endregion
+
+        public static Dictionary<int, AvatarSettings> instancedSettings = new();
+
+        // Assign VODatabases
+        public static List<VODatabase> maleVOs = new();
+        public static List<VODatabase> femaleVOs = new();
+
+        public static void SetRandomAvatar(PoliceOfficer offc, ref AvatarSettings createdSettings)
         {
             AvatarSettings newSettings = ScriptableObject.CreateInstance<AvatarSettings>();
 
+
             var originalAccessorySettings = offc.Avatar.CurrentSettings.AccessorySettings;
             var originalBodySettings = offc.Avatar.CurrentSettings.BodyLayerSettings;
-
 #if MONO
             List<LayerSetting> faceSettings = SetRandomLook(newSettings);
 
@@ -80,8 +144,20 @@ namespace NACopsV1
 #endif
 
             newSettings.FaceLayerSettings = faceSettings;
-            
             offc.Avatar.LoadAvatarSettings(newSettings);
+
+            int id = offc.transform.root.gameObject.GetInstanceID();
+            if (instancedSettings.ContainsKey(id))
+            {
+                if (instancedSettings[id] != null)
+                    UnityEngine.Object.DestroyImmediate(instancedSettings[id]);
+
+                instancedSettings[id] = newSettings;
+            }
+            else
+                instancedSettings.Add(offc.transform.root.gameObject.GetInstanceID(), newSettings);
+
+            createdSettings = newSettings;
         }
 
 #if MONO
@@ -104,12 +180,12 @@ namespace NACopsV1
             face0.layerTint = new Color(0f, 0f, 0f, 1f);
             faceSettings[0] = face0;
 
-            newSettings.Gender = UnityEngine.Random.Range(0f, 0.70f);
+            newSettings.Gender = (float)UnityEngine.Random.Range(0, 2);
 
             if (UnityEngine.Random.Range(0f, 1f) > 0.6f && newSettings.Gender < 0.5f)
             {
                 var face1 = faceSettings[1];
-                face1.layerPath = "Avatar/Layers/Face/FacialHair_Goatee";
+                face1.layerPath = randomFacialHairLayers[UnityEngine.Random.Range(0, randomFacialHairLayers.Count)];
                 face1.layerTint = new Color(0f, 0f, 0f, 1f);
                 faceSettings[1] = face1;
             }
@@ -119,10 +195,18 @@ namespace NACopsV1
             face3.layerTint = new Color(0f, 0f, 0f, 0.96f);
             faceSettings[3] = face3;
 
-            var face4 = faceSettings[4];
-            face4.layerPath = "Avatar/Layers/Face/OldPersonWrinkles";
-            face4.layerTint = new Color(0f, 0f, 0f, 0.55f);
-            faceSettings[4] = face4;
+            if (UnityEngine.Random.Range(0f, 1f) > 0.3f)
+            {
+                var face4 = faceSettings[4];
+                string faceLayerPath = "";
+                if (UnityEngine.Random.Range(0f, 1f) > 0.5f)
+                    faceLayerPath = "Avatar/Layers/Face/OldPersonWrinkles";
+                else
+                    faceLayerPath = "Avatar/Layers/Face/Freckles";
+                face4.layerPath = faceLayerPath;
+                face4.layerTint = new Color(0f, 0f, 0f, 0.55f);
+                faceSettings[4] = face4;
+            }
 
             newSettings.UseCombinedLayer = false;
 
@@ -131,67 +215,50 @@ namespace NACopsV1
             newSettings.EyebrowRestingHeight = UnityEngine.Random.Range(-1f, -1.40f);
             newSettings.EyeBallTint = new Color(1f, 1f, 1f);
             newSettings.EyeballMaterialIdentifier = "Default";
-            newSettings.Height = UnityEngine.Random.Range(0.96f, 1.1f);
+            newSettings.Height = UnityEngine.Random.Range(0.96f, 1.08f);
             newSettings.HairColor = randomHairColors[UnityEngine.Random.Range(0, randomHairColors.Count)];
             if (newSettings.Gender < 0.5f)
                 newSettings.HairPath = randomMaleHairLayers[UnityEngine.Random.Range(0, randomMaleHairLayers.Count)];
             else
                 newSettings.HairPath = randomFemaleHairLayers[UnityEngine.Random.Range(0, randomFemaleHairLayers.Count)];
-            newSettings.Weight = UnityEngine.Random.Range(0.65f, 1f);
+            newSettings.Weight = UnityEngine.Random.Range(0.3f, 0.7f);
             newSettings.PupilDilation = 0.55f;
             newSettings.RightEyeLidColor = new Color(0.4118f, 0.3216f, 0.2471f);
             newSettings.LeftEyeLidColor = new Color(0.4118f, 0.3216f, 0.2471f);
             newSettings.RightEyeRestingState = new Eye.EyeLidConfiguration() { bottomLidOpen = 0.2719f, topLidOpen = 0.4313f };
             newSettings.LeftEyeRestingState = new Eye.EyeLidConfiguration() { bottomLidOpen = 0.2719f, topLidOpen = 0.4313f };
             newSettings.SkinColor = skinColors[UnityEngine.Random.Range(0, skinColors.Count)];
-
             return faceSettings;
         }
 
-
-        public static Dictionary<int, List<Color>> PIColorPalettes = new()
+        public static IEnumerator GenerateImpostor(PoliceOfficer offc, AvatarSettings settings)
         {
-            // Brown Blazer + Cap, blue shirt, gray pants
-            {0, new List<Color>()
-            {
-                new Color(0.396f, 0.396f, 0.396f), // jeans
-                new Color(0.326f, 0.578f, 0.896f), // shirt
-                new Color(0.151f, 0.151f, 0.151f), // sneakers
-                new Color(0.613f, 0.493f, 0.344f), // (rand) blazer
-                new Color(0.613f, 0.493f, 0.344f)  // (rand) cap
-            }},
+            offc.Movement.Agent.enabled = false;
+            offc.Movement.enabled = false;
+            Vector3 origPos = offc.transform.position;
+            Quaternion origRot = offc.transform.rotation;
 
-            // Gray Blazer + Cap, orange shirt, blue pants
-            {1, new List<Color>()
-            {
-                new Color(0.2588f, 0.3647f, 0.5490f), // jeans
-                new Color(0.7137f, 0.2941f, 0.1568f), // shirt
-                Color.black,                          // sneakers
-                new Color(0.1372f, 0.1058f, 0.0823f), // (rand) blazer
-                new Color(0.1372f, 0.1058f, 0.0823f)  // (rand) cap
-            }},
+            offc.transform.SetPositionAndRotation(targetPosition, Quaternion.Euler(targetRotationEuler));
+            offc.Avatar.Animation.SetGrounded(true);
+            yield return Wait1;
+            offc.Avatar.Animation.enabled = false;
+            offc.Avatar.Impostor.DisableImpostor();
+            offc.Avatar.BodyContainer.gameObject.SetActive(true);
+            yield return Wait01;
+            Texture2D tex = CreateImpostor(offc);
 
-            // Dark Gray Blazer + Light Gray Cap, blue shirt, blue pants
-            {2, new List<Color>()
-            {
-                new Color(0.258f, 0.364f, 0.549f), // jeans
-                new Color(0.326f, 0.578f, 0.896f), // shirt
-                Color.black,                       // sneakers
-                new Color(0.121f, 0.094f, 0.078f), // (rand) blazer
-                new Color(0.772f, 0.772f, 0.772f)  // (rand) cap
-            }},
+            offc.Avatar.Impostor.EnableImpostor();
+            offc.transform.SetPositionAndRotation(origPos, origRot);
+            offc.Avatar.Animation.enabled = true;
+            offc.Movement.Agent.enabled = true;
+            offc.Movement.enabled = true;
 
-            // gray Blazer + Light Gray Cap, black shirt, brown pants
-            {3, new List<Color>()
-            {
-                new Color(0.615f, 0.478f, 0.313f), // jeans
-                Color.black,                       // shirt
-                Color.black,                       // sneakers
-                new Color(0.396f, 0.396f, 0.396f), // (rand) blazer
-                new Color(0.772f, 0.772f, 0.772f)  // (rand) cap
-            }},
-        };
-
+            settings.ImpostorTexture = tex;
+            offc.Avatar.Impostor.SetAvatarSettings(settings);
+            // fixes a bug where the mesh gets extended to the air after
+            offc.Avatar.Animation.PlayStandUpAnimation();
+            yield break;
+        }
         public static IEnumerator PIAvatar(PoliceOfficer offc)
         {
             AvatarSettings newSettings = ScriptableObject.CreateInstance<AvatarSettings>();
@@ -221,10 +288,6 @@ namespace NACopsV1
             if (newSettings.Gender > 0.5f && UnityEngine.Random.Range(0f, 1f) > 0.3f)
             {
                 hasSkirt = true;
-                var skirt = bodySettings[2];
-                skirt.layerPath = "Avatar/Accessories/Bottom/MediumSkirt/MediumSkirt";
-                skirt.layerTint = palette[0];
-                bodySettings[2] = skirt;
             }
             else
             {
@@ -233,7 +296,7 @@ namespace NACopsV1
                 jeans.layerTint = palette[0];
                 bodySettings[2] = jeans;
             }
-                
+
             if (UnityEngine.Random.Range(0f, 1f) > 0.5f)
             {
                 var shirt = bodySettings[3];
@@ -248,7 +311,7 @@ namespace NACopsV1
                 shirt.layerTint = palette[1];
                 bodySettings[3] = shirt;
             }
-                
+
             var sneakers = accessorySettings[0];
             sneakers.path = "Avatar/Accessories/Feet/Sneakers/Sneakers";
             sneakers.color = palette[2];
@@ -262,7 +325,7 @@ namespace NACopsV1
                 accessorySettings[2] = blazer;
             }
 
-            if (UnityEngine.Random.Range(0f, 1f) > 0.75f)
+            if (UnityEngine.Random.Range(0f, 1f) > 0.75f && newSettings.HairPath != "Avatar/Hair/DoubleTopKnot/DoubleTopKnot")
             {
                 var cap = accessorySettings[3];
                 cap.path = "Avatar/Accessories/Head/Cap/Cap";
@@ -278,6 +341,13 @@ namespace NACopsV1
                 newSettings.HairPath = "";
             }
 
+            if (hasSkirt)
+            {
+                var skirt = accessorySettings[4];
+                skirt.path = "Avatar/Accessories/Bottom/MediumSkirt/MediumSkirt";
+                skirt.color = palette[0];
+                accessorySettings[4] = skirt;
+            }
 
             if (UnityEngine.Random.Range(0f, 1f) > 0.8f)
             {
@@ -292,31 +362,21 @@ namespace NACopsV1
 
             offc.Avatar.LoadAvatarSettings(newSettings);
 
-            offc.FirstName = newSettings.Gender < 0.5f ? randomMaleNames[UnityEngine.Random.Range(0, randomMaleNames.Count)] : randomFemaleNames[UnityEngine.Random.Range(0, randomFemaleNames.Count)];
+            offc.NPCData.BasicInfo.FirstName = newSettings.Gender < 0.5f ? randomMaleNames[UnityEngine.Random.Range(0, randomMaleNames.Count)] : randomFemaleNames[UnityEngine.Random.Range(0, randomFemaleNames.Count)];
 
-            // Because the default impostor show the npc being a cop generate new impostor from these settings
+            int id = offc.transform.root.gameObject.GetInstanceID();
+            if (instancedSettings.ContainsKey(id))
+            {
+                if (instancedSettings[id] != null) 
+                    UnityEngine.Object.DestroyImmediate(instancedSettings[id]);
 
-            offc.Movement.Agent.enabled = false;
-            offc.Movement.enabled = false;
-            Vector3 origPos = offc.transform.position;
-            Quaternion origRot = offc.transform.rotation;
-            offc.transform.SetPositionAndRotation(targetPosition, Quaternion.Euler(targetRotationEuler));
-            offc.Avatar.Animation.SetGrounded(true);
-            offc.Avatar.Animation.enabled = false;
-            yield return Wait01;
-            offc.Avatar.BodyContainer.gameObject.SetActive(true);
-            yield return Wait1;
-            Texture2D tex = CreateImpostor(offc);
+                instancedSettings[id] = newSettings;
+            }
+            else
+                instancedSettings.Add(offc.transform.root.gameObject.GetInstanceID(), newSettings);
 
-            offc.transform.SetPositionAndRotation(origPos, origRot);
-            offc.Avatar.BodyContainer.gameObject.SetActive(false);
-            offc.Avatar.Animation.enabled = true;
-            offc.Movement.Agent.enabled = true;
-            offc.Movement.enabled = true;
-
-            newSettings.ImpostorTexture = tex;
-            offc.Avatar.Impostor.SetAvatarSettings(newSettings);
-            yield return null;
+            yield return GenerateImpostor(offc, newSettings);
+            yield break;
         }
 
         public static IEnumerator SetRaiderAvatar(PoliceOfficer offc)
@@ -392,8 +452,41 @@ namespace NACopsV1
             yield return null;
         }
 
+        public static void SetupVODatabaseRefs()
+        {
+            VODatabase[] dbs = Resources.FindObjectsOfTypeAll<VODatabase>();
+            foreach (VODatabase db in dbs)
+            {
+                if (maleVOs.Contains(db) || femaleVOs.Contains(db)) continue;
 
+                if (db.name == "Tyler VO" || db.name == "Hippie VO" || db.name == "Redneck VO")
+                    maleVOs.Add(db);
 
+                if (db.name == "Female1 VO" || db.name == "Female2 VO" || db.name == "Timid VO")
+                    femaleVOs.Add(db);
+            }
+            DebugModule.Log("Finished settting up VODatabase refs");
+        }
+
+        public static void SetVOEmitter(NPC npc)
+        {
+            if (maleVOs.Count == 0 || femaleVOs.Count == 0)
+            {
+                maleVOs.Clear();
+                femaleVOs.Clear();
+                SetupVODatabaseRefs();
+            }
+
+            if (npc.Avatar.CurrentSettings.Gender < 0.5f)
+            {
+                npc.VoiceOverEmitter.SetDatabase(maleVOs[UnityEngine.Random.Range(0, maleVOs.Count)]);
+                npc.VoiceOverEmitter.SetDefaultPitch(UnityEngine.Random.Range(0.90f, 0.98f));
+            }
+            else
+            {
+                npc.VoiceOverEmitter.SetDatabase(femaleVOs[UnityEngine.Random.Range(0, femaleVOs.Count)]);
+                npc.VoiceOverEmitter.SetDefaultPitch(UnityEngine.Random.Range(1.15f, 1.4f));
+            }
+        }
     }
-
 }

@@ -1,3 +1,49 @@
+# Version 2.1.0
+- Ensured that mod works in the latest 0.4.6f11 update, requiring alot of refactoring and bugfixing
+- Changed MelonLoader dependency to be 0.7.2 or Higher (prefer 0.7.3)
+- Added new feature Mass Surveillance, where cameras across the Hyland Point track player, potentially alerting cops if crimes are noticed
+  - Additionally this feature allows for changing the Fine payment amounts for crimes (with mod default being that crime fines increase with progression)
+  - Additionally this feature allows for paying crime charges from Bank balance instead of deducting fines from cash
+- Added support for using MelonPreferences alongside the json config system
+  - Creates the main mod config.json equivalent options for preferences
+  - Melon Preferences settings will always take precedence over config.json file settings, and if config.json doesnt match the Melon Preferences, then the config.json will be updated to match Melon Preferences
+  - Tried to make most of the features support changing at runtime, but it still requires extensive testing and might have issues if changed at runtime
+- Added support for installing the mod through Thunderstore Mod Manager
+- Added 3-hour (ingame) cooldown to Buy Bust event so that it doesnt happen back to back in a short timeframe
+- Added support for changing the officers ranged weapons from officer.json file at "RangedWeapon", with supported values as "m1911", "goldenm1911", "revolver" and "shotgun". This will instantiate the desired weapon and show it in the officers holsters.
+- Added support for changing the officers Taser settings in officer.json file
+  - Subsequently changed the Taser to be a bit better than it is by default and also it now deals small amount of damage
+- Added support for changing the officers Ranged weapons aim time settings in officer.json file and mod default set to slightly increase the speed at which officers aim with  weapons
+- Added support for changing the officers Vision settings in officer.json file (controls how fast they notice crimes and at what range)
+- Added support for disabling the officers notice icons (the ? and !) that appear when they are seeing the player in officer.json file at "ShowNoticeIcons" (default true)
+- Added support for disabling Road Checkpoints in the main config.json file at "CheckpointsEnabled"
+- Added console support for visualizing the new Mass Surveillance camera locations with `nacops visualize surveillance`
+- Added logic to Private Investigator to allow them to rarely make phone calls during investigation and if player is inside a property, the investigator can rarely come close to the building and take photos of players property with the phone camera
+- Changed the "CombatGiveUpRange" and "CombatSearchTime" in officer.json file to be the game default values (9999.0)
+- Changed the mod default Officer movement speed from 1.75 down to 1.45 in officer.json file
+- Changed all mod related data to load from and save to UserData folder instead of the Mods folder
+- Changed the mod name to not have the "V1" suffix anymore
+- Changed officers spawning logic to instantiate a clone from a runtime officer object and re-initializing it due to spawnable prefabs not having an officer template prefab anymore
+- Changed Buy Bust officer to not spawn a new officer each time, instead now it uses a single officer object that is instantiated at startup
+- Changed Private Investigator officer to not spawn a new officer each time, instead also now uses a single officer object that is instantiated at startup
+- Changed the Private Investigator movement logic and behaviour to avoid player vision more and to keep distance to the player
+- Changed the Private Investigator movement logic to calculate distance to nearest road nodes closest point on the line segment to avoid pausing movement while the officer is on a road and to avoid pathfinding to a position that is on a road (might not work perfectly at all locations)
+- Changed the Private Investigator movement logic and behaviour to evaluate faster or slower based on the current state
+- Changed the Private Investigator Movement speed to be relative to distance to the player, with distance increasing the movement speed. Simultaneously decreased the default movement speed drastically.
+- Adjusted Private Investigator investigation result calculation to account for faster evaluation speed
+- Rotated the Private Investigator names to new ones
+- Changed Foot patrol and Sentry config logic to use the Min and Max members amount, with the config value "member" being assigned now to MaxMembers amount, and the Min members value defaulting always to 1.
+- Changed Buy Bust officer to not instantly despawn upon dying, instead now has 30-second wait before despawning
+- Changed the Property Heat data to save to a json file with (slot number)_(organisation name).json formatting instead of just the organisation name
+- Changed the Avatar randomization logic to track all created ScriptableObject instances so that upon save exit or save reload the previous ScriptableObject instances are destroyed
+- Fixed a bug where if the CanEnterBuildings is true in officer.json, player could enter unowned businesses and properties
+- Fixed a bug where the mod added vehicle patrol routes didnt have the class field for the route name assigned
+- Fixed a bug where the main mod config had the LethalCops set to true in the config loader module, when it was supposed to be default false
+- Removed Mod added vehicle count from officer.json file
+- Added to DEBUG configuration builds support for generating .csv files for analyzing police officer related behaviour weekdays, lengths, total availability, etc. to help with future development. This is old code which was removed in version 2.0.0, but now brought back lol. 2 different modes are available for this: static and runtime analysis, with static being a fast quick check and runtime analysis taking longer but being more precise.
+  - Static analysis `nacops list analytics` -> Reads all the police scheduled events and behaviours for each weekday and outputs a .csv file to the mod UserData folder
+  - Runtime analysis `nacops build analytics start` -> Starts recording all officer behaviours at runtime to output a precise amount of ran police events and behaviours for each weekday, outputting a .csv file when sending `nacops build analytics stop` command.
+
 # Version 2.0.2
 - Ensured that mod works in the 0.4.5f2 update
 - Fixed a bug in the feature Notice Open Carry weapons where brandishing state was being removed incorrectly when player was holding a weapon

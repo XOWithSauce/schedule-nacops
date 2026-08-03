@@ -1,11 +1,8 @@
-
-
-
-
 using HarmonyLib;
 
-using static NACopsV1.NACops;
-using static NACopsV1.PrivateInvestigator;
+using static NACops.NACops;
+using static NACops.PrivateInvestigator;
+using static NACops.CopInitHelper;
 
 #if MONO
 using ScheduleOne.Police;
@@ -17,7 +14,7 @@ using Il2CppScheduleOne.NPCs.Behaviour;
 using Il2CppScheduleOne.AvatarFramework.Equipping;
 #endif
 
-namespace NACopsV1
+namespace NACops
 {
     // To make investigators random name visible
     [HarmonyPatch(typeof(PoliceOfficer), "GetNameAddress")]
@@ -28,11 +25,10 @@ namespace NACopsV1
         {
             // IF the officer is a private investigator
             if (!currentConfig.PrivateInvestigator) return;
-            if (investigatorObjectIDs.Count > 0 && investigatorObjectIDs.Contains(__instance.transform.root.gameObject.GetInstanceID()))
-                __result = __instance.FirstName;
+            if (__instance == investigator)
+                __result = __instance.NPCData.BasicInfo.FirstName;
             return;
         }
-
     }
 
     // To make invesitgator not throw null reference excpetion from missing avatar belt
@@ -45,10 +41,10 @@ namespace NACopsV1
             // IF the officer is a private investigator
             if (!currentConfig.PrivateInvestigator) return true;
             if (__instance.officer.belt == null)
+            {
                 return false;
+            }
             return true;
         }
-
     }
-
 }

@@ -2,16 +2,17 @@ using MelonLoader;
 using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.AI;
 
-using static NACopsV1.DebugModule;
-using static NACopsV1.NACops;
-using static NACopsV1.OfficerOverrides;
-using static NACopsV1.AvatarUtility;
+using static NACops.DebugModule;
+using static NACops.NACops;
+using static NACops.AvatarUtility;
+using static NACops.CopInitHelper;
 
 #if MONO
 using ScheduleOne.Core.Items.Framework;
 using ScheduleOne.Vision;
-using ScheduleOne.PlayerScripts;
+using ScheduleOne.Dialogue;
 using ScheduleOne.Employees;
 using ScheduleOne.AvatarFramework.Equipping;
 using ScheduleOne.DevUtilities;
@@ -27,12 +28,13 @@ using ScheduleOne.VoiceOver;
 using ScheduleOne.Police;
 using ScheduleOne.Property;
 using ScheduleOne.Storage;
-using ScheduleOne.NPCs.Behaviour;
+using FishNet.Object;
 using TMPro;
 #else
 using Il2CppScheduleOne.Core.Items.Framework;
 using Il2CppScheduleOne.Vision;
 using Il2CppScheduleOne.PlayerScripts;
+using Il2CppScheduleOne.Dialogue;
 using Il2CppScheduleOne.Employees;
 using Il2CppScheduleOne.AvatarFramework.Equipping;
 using Il2CppScheduleOne.DevUtilities;
@@ -48,12 +50,12 @@ using Il2CppScheduleOne.VoiceOver;
 using Il2CppScheduleOne.Police;
 using Il2CppScheduleOne.Property;
 using Il2CppScheduleOne.Storage;
-using Il2CppScheduleOne.NPCs.Behaviour;
+using Il2CppFishNet.Object;
 using Il2CppTMPro;
 using Il2CppInterop.Runtime;
 #endif
 
-namespace NACopsV1
+namespace NACops
 {
     public static class RaidPropertyEvent 
     {
@@ -77,6 +79,7 @@ namespace NACopsV1
         public static CanvasGroup notificationGroup;
 
         // During active track state
+        public static bool raidersHaveSpawned = false;
         public static bool raidActive = false;
         private static int raidOfficersAlive = 3;
         public static List<int> raidOfficerObjIDs = new();
@@ -108,6 +111,7 @@ namespace NACopsV1
 
         public static readonly List<string> raidOfficerLines = new()
         {
+
             "We are shutting this business down!", 
             "Get on the ground!", 
             "Hyland Point Police! Drop your weapons!",
@@ -209,7 +213,7 @@ namespace NACopsV1
             if (!raidActive)
             {
                 raidActive = true;
-                SpawnRaidCops(property);
+                yield return MelonCoroutines.Start(SpawnRaidCops(property));
                 yield return Wait1;
                 Log($"Sending raid to {property.propertyName} ({property.propertyCode})");
                 coros.Add(MelonCoroutines.Start(TraverseCurrentToProperty(property)));
@@ -255,13 +259,41 @@ namespace NACopsV1
 
         #region Linear Logic for Raid
         // Police station spawn group
-        public static void SpawnRaidCops(Property targetProperty)
+        public static IEnumerator SpawnRaidCops(Property targetProperty)
         {
             // Spawn multiple to the station
             for (int i = 0; i < raidConfig.RaidCopsCount; i++)
             {
-                PoliceOfficer offc = SpawnOfficerRuntime(autoDeactivate: false);
-                currentSummoned.Add(offc);
+                GameObject copNet = UnityEngine.Object.Instantiate<GameObject>(copBaseClone);
+                NetworkObject newNob = copNet.GetComponent<NetworkObject>();
+                PoliceOfficer offc = copNet.gameObject.GetComponent<PoliceOfficer>();
+                offc.AutoDeactivate = false;
+
+                copNet.name = $"NACop_Raider_{i}";
+                yield return MelonCoroutines.Start(InitiateClone(newNob, networkManager));
+
+                NPC myNpc = copNet.gameObject.GetComponent<NPC>();
+                myNpc.NPCData.BasicInfo.ID = $"NACop_Raider_{i}";
+                myNpc.NPCData.BasicInfo.FirstName = "Officer";
+                myNpc.NPCData.BasicInfo.LastName = "";
+                myNpc.NPCData.Inventory.CanBePickpocketed = false;
+                myNpc.NPCData.WeatherBehaviour.UseUmbrellaChance = 0f;
+                myNpc.Actions._canUseUmbrella = false;
+
+                if (!NPCManager.NPCRegistry.Contains(myNpc))
+                    NPCManager.NPCRegistry.Add(myNpc);
+                else
+                    Log("NPC already registered in NPCRegistry");
+
+                networkManager.ServerManager.Spawn(copNet);
+                copNet.gameObject.SetActive(true);
+
+                DialogueController controller = offc.DialogueHandler.GetComponent<DialogueController>();
+                controller.Choices.Clear();
+
+                copNet.transform.Find("Avatar").gameObject.SetActive(true);
+                copNet.GetComponent<NavMeshAgent>().enabled = true;
+
                 RaidOfficer raidOfficer = new RaidOfficer()
                 {
                     Name = offc.name,
@@ -272,13 +304,13 @@ namespace NACopsV1
                 offc.Behaviour.ScheduleManager.DisableSchedule();
                 offc.Movement.PauseMovement();
                 offc.Movement.Agent.areaMask = 57;
+                offc.PursuitBehaviour.arrestingEnabled = false;
                 offc.Movement.Warp(Singleton<Map>.Instance.PoliceStation.Doors[0].AccessPoint);
                 coros.Add(MelonCoroutines.Start(SetRaiderAvatar(offc)));
                 currentRaidOfficers.Add(raidOfficer);
-               
 
-                offc.Health.MaxHealth = 240f;
-                offc.Health.Health = 240f;
+                offc.NPCData.Health.MaxHealth = raidConfig.RaiderMaxHealth;
+                offc.Health.Health = raidConfig.RaiderMaxHealth;
                 offc.Behaviour.CombatBehaviour.SetWeapon(offc.GunPrefab != null ? offc.GunPrefab.AssetPath : string.Empty);
 #if MONO
                 AvatarRangedWeapon wep = offc.Behaviour.CombatBehaviour.currentWeapon as AvatarRangedWeapon;
@@ -286,7 +318,7 @@ namespace NACopsV1
                 AvatarRangedWeapon wep = offc.Behaviour.CombatBehaviour.currentWeapon.TryCast<AvatarRangedWeapon>();
 #endif
                 wep.CanShootWhileMoving = true;
-                wep.Damage = 65f;
+                wep.Damage = raidConfig.RaiderWeaponDmg;
                 wep.CooldownDuration = 0.6f;
                 wep.MinUseRange = 0.1f;
                 wep.MaxFireRate = 0.8f;
@@ -295,8 +327,8 @@ namespace NACopsV1
 
                 // Remove the required visual states
                 raidOfficerObjIDs.Add(offc.transform.root.gameObject.GetInstanceID());
-
-                offc.Awareness.enabled = false;
+                /*
+                 offc.Awareness.enabled = false;
 #if MONO
                 ISightable sightable = (ISightable)Player.Local;
                 Dictionary<EVisualState, VisionCone.StateContainer> newStates = new();
@@ -330,9 +362,14 @@ namespace NACopsV1
                     offc.Awareness.VisionCone.stateSettings[sightable] = newStates;
                 }
                 offc.Awareness.enabled = true;
+                 */
+
             }
+
             AssignRaidOfficerRole(targetProperty);
             raidOfficersAlive = raidConfig.RaidCopsCount;
+
+            yield break;
         }
         // Assign roles
         public static void AssignRaidOfficerRole(Property property)
@@ -559,24 +596,21 @@ namespace NACopsV1
             foreach (Employee employee in employees)
             {
                 yield return Wait05;
-                if (!registered) yield break;
+                if (!registered || !raidActive) yield break;
                 employee.Behaviour.FleeBehaviour.SetPointToFlee(employee.AssignedProperty.EmployeeIdlePoints[0].position);
-                employee.Behaviour.FleeBehaviour.Activate();
+                employee.Behaviour.AddEnabledBehaviour(employee.Behaviour.FleeBehaviour);
             }
-            yield return Wait30;
-            if (!registered) yield break;
+            yield return Wait5;
+            yield return Wait5;
+            if (!registered || !raidActive) yield break;
             foreach (Employee employee in employees)
             {
                 yield return Wait05;
-                if (!registered) yield break;
-                if (employee.Behaviour.activeBehaviour != null && employee.Behaviour.activeBehaviour == employee.Behaviour.FleeBehaviour)
-                {
-                    employee.Behaviour.FleeBehaviour.Deactivate();
-                    employee.Movement.SetDestination(employee.WaitOutside.IdlePoint);
-                }
+                if (!registered || !raidActive) yield break;
+                employee.Behaviour.FleeBehaviour.SetPointToFlee(employee.AssignedProperty.EmployeeIdlePoints[0].position);
+                employee.Behaviour.AddEnabledBehaviour(employee.Behaviour.FleeBehaviour);
             }
-
-            yield return null;
+            yield break;
         }
 
         // Then here these 4 functions run in a loop to handle the beh
@@ -1068,7 +1102,7 @@ namespace NACopsV1
                 yield break;
             }
                 
-            yield return null;
+            yield break;
         }
         // -----
 #endregion
@@ -1091,6 +1125,7 @@ namespace NACopsV1
                 else
                     offc.officer.Movement.EndSetDestination(NPCMovement.WalkResult.Interrupted);
             }
+            yield break;
         }
         public static void Casted<T>(BuildableItem item, Action<T> callback) where T : BuildableItem
         {
@@ -1123,7 +1158,7 @@ namespace NACopsV1
                             searchedContainers.Remove(id);
                 }
             }
-            yield return null;
+            yield break;
         }
         public static IEnumerator RemoveToBeDestroyed(BuildableItem item, ERaidDestroyType type = ERaidDestroyType.None)
         {
@@ -1131,6 +1166,8 @@ namespace NACopsV1
                 yield return RemoveToBeDestroyed(item, containerNotSearched: false);
             else
                 yield return RemoveToBeDestroyed(item, containerNotSearched: true);
+
+            yield break;
         }
 
         public static void DestroyBuiltItem(BuildableItem item, int targetInstanceID)
@@ -1178,8 +1215,6 @@ namespace NACopsV1
 
             yield return Wait30;
             if (!registered) yield break;
-            if (currentSummoned.Contains(offc.officer))
-                currentSummoned.Remove(offc.officer);
             Log("Despawning " + offc.Name);
             NPC npc = offc.officer.gameObject.GetComponent<NPC>();
             if (npc != null && NPCManager.NPCRegistry.Contains(npc))
@@ -1197,6 +1232,7 @@ namespace NACopsV1
                 if (raidActive)
                     ResetRaidEvent();
             }
+            yield break;
         }
         public static IEnumerator WaitCombatEnd(RaidOfficer offc)
         {
@@ -1231,7 +1267,7 @@ namespace NACopsV1
                     coros.Add(MelonCoroutines.Start(Despawn(offc)));
             }
             yield break;
-        } 
+        }
         public static Dictionary<EOfficerRaidRole, int> GetTotalForRoles(Property property)
         {
 #if MONO
@@ -1576,8 +1612,15 @@ namespace NACopsV1
                     if (tr.childCount > 0)
                         imageTr = tr.GetChild(0);
                     if (imageTr != null)
+                    {
                         homeSprite = imageTr.GetComponent<Image>().sprite;
+                        break;
+                    }
                 }
+            }
+            if (homeSprite == null)
+            {
+                Log("Warning: Home sprite not assigned!");
             }
         }
 #endregion

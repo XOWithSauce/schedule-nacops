@@ -23,6 +23,7 @@ namespace NACops
             if (!registered) return;
             if (officerConfig == null) return;
             if (!officerConfig.CanEnterBuildings) return;
+            if (__instance.Property == null) return;
             if (!__instance.Property.IsOwned) return;
             if (reason == "Police are nearby!")
                 __result = true;

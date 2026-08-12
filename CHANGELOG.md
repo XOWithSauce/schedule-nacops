@@ -1,3 +1,6 @@
+# Version 2.1.1
+- Fixed an issue Bleuballs Boutique door being bugged and spamming errors due to a bug fix in the version 2.1.0 update
+
 # Version 2.1.0
 - Ensured that mod works in the latest 0.4.6f11 update, requiring alot of refactoring and bugfixing
 - Changed MelonLoader dependency to be 0.7.2 or Higher (prefer 0.7.3)

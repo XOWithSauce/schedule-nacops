@@ -699,7 +699,11 @@ namespace NACops
         public static void BuildCrimeOverrideOfType(Crime crime)
         {
             CrimeOverride newOverride = new CrimeOverride(crime);
+#if MONO
             string tableKey = crime.GetType().Name;
+#else
+            string tableKey = crime.GetIl2CppType().Name;
+#endif
             if (!crimeTable.ContainsKey(tableKey))
                 crimeTable.Add(tableKey, newOverride);
             else
@@ -760,7 +764,11 @@ namespace NACops
 #endif
             foreach (Crime crime in keys)
             {
+#if MONO
                 string tableKey = crime.GetType().Name;
+#else
+                string tableKey = crime.GetIl2CppType().Name;
+#endif
                 int crimeCount = crimes[crime];
                 if (crimeTable.TryGetValue(tableKey, out CrimeOverride crimeData))
                 {

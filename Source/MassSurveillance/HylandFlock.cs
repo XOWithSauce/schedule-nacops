@@ -177,7 +177,7 @@ namespace NACops
             lineRendererObj.transform.localRotation = Quaternion.Euler(0f, 0f, 0f);
             lineRenderer = lineRendererObj.AddComponent<LineRenderer>();
             lineRenderer.material = lineRendererMaterial;
-            lineRenderer.widthMultiplier = LINE_WIDTH_MIN;
+            lineRenderer.widthMultiplier = 0f;
             lineRenderer.SetPosition(0, lineRendererObj.transform.position);
 
             GameObject zoneObj = new("ActivationZone");
@@ -274,6 +274,7 @@ namespace NACops
             cacheEvidenceRatio = 0f;
             cameraSeenStateCache.Clear();
             cameraLight.intensity = 0f;
+            lineRenderer.widthMultiplier = 0f;
             return;
         }
 
@@ -646,6 +647,7 @@ namespace NACops
         public HylandFlockInstance parentInstance;
         public SphereCollider sc;
         public Rigidbody rb;
+
         public void Awake()
         {
             this.gameObject.layer = activationZoneLayer;

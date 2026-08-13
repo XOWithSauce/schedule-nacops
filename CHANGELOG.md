@@ -1,5 +1,10 @@
+# Version 2.1.2
+- Fixed [Issues #7](https://github.com/XOWithSauce/schedule-nacops/issues/7) IL2CPP backend was using the Mono GetType reference for Crime types, causing the committed crimes to not count after arrest
+- Fixed Mass Surveillance Cameras having all their rendered lines visible after initiation towards Vector3 Zero, when they should be invisible until activated
+- Changed the config.json file to have the "NoOpenCarryWeapons" as true, because I forgot to change it back after testing and it was set to false in 2.1.0 and 2.1.1
+
 # Version 2.1.1
-- Fixed an issue Bleuballs Boutique door being bugged and spamming errors due to a bug fix in the version 2.1.0 update
+- Fixed [Issues #6](https://github.com/XOWithSauce/schedule-nacops/issues/6) Bleuballs Boutique door being bugged and spamming errors due to a bug fix in the version 2.1.0 update
 
 # Version 2.1.0
 - Ensured that mod works in the latest 0.4.6f11 update, requiring alot of refactoring and bugfixing

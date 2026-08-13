@@ -917,6 +917,7 @@ file OR the **Schedule I mod manager phone app**.
 
 - CrimePaymentMultiplier:
   - Integer number that gets applies to each crime fine separately to increase the paid fine amount
+    - If set to 0 you will not have to pay for crimes
   - Note: `GrowPaymentsWithProgression` must be `false` for this to work!
 
 ---

@@ -68,7 +68,7 @@ namespace NACops
         public const string Description = "Crazyyyy cops";
         public const string Author = "XOWithSauce";
         public const string Company = null;
-        public const string Version = "2.1.1";
+        public const string Version = "2.1.2";
         public const string DownloadLink = null;
     }
 

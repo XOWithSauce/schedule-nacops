@@ -1,4 +1,5 @@
 using HarmonyLib;
+
 using static NACops.PrivateInvestigator;
 using static NACops.RaidPropertyEvent;
 using static NACops.CopInitHelper;

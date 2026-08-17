@@ -1,6 +1,3 @@
-
-
-
 using MelonLoader;
 using System.Collections;
 using UnityEngine;
@@ -26,7 +23,6 @@ using Il2CppScheduleOne.DevUtilities;
 using Il2CppVLB;
 using Il2CppInterop.Runtime.Injection;
 using Il2CppScheduleOne.Levelling;
-using Il2CppScheduleOne.Law;
 #endif
 
 

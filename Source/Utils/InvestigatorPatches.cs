@@ -1,7 +1,6 @@
 using HarmonyLib;
 
 using static NACops.NACops;
-using static NACops.PrivateInvestigator;
 using static NACops.CopInitHelper;
 
 #if MONO

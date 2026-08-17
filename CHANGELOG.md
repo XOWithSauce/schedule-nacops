@@ -1,3 +1,8 @@
+# Version 2.1.3
+- Ensured that current mod version works in latest 0.4.6f13 update
+- Fixed [Issues #8](https://github.com/XOWithSauce/schedule-nacops/issues/8) where at Vector3.Zero invisible cop would have its awareness enabled unintendedly
+- Cleaned up the usings directives section in multiple files, removing redundant ones, removing useless newlines and organizing
+
 # Version 2.1.2
 - Fixed [Issues #7](https://github.com/XOWithSauce/schedule-nacops/issues/7) IL2CPP backend was using the Mono GetType reference for Crime types, causing the committed crimes to not count after arrest
 - Fixed Mass Surveillance Cameras having all their rendered lines visible after initiation towards Vector3 Zero, when they should be invisible until activated

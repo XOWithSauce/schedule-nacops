@@ -23,7 +23,6 @@ using Il2CppScheduleOne.DevUtilities;
 using Il2CppScheduleOne.Vehicles;
 #endif
 
-
 namespace NACops
 {
 

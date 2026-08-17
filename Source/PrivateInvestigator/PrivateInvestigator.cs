@@ -37,7 +37,6 @@ using Il2CppScheduleOne.Map;
 using Il2CppScheduleOne.DevUtilities;
 using Il2CppScheduleOne.VoiceOver;
 using Il2CppScheduleOne.Vehicles.AI;
-using Il2CppScheduleOne.Police;
 using Il2CppScheduleOne.AvatarFramework.Equipping;
 using Il2CppScheduleOne.Audio;
 using Il2CppPathfinding;

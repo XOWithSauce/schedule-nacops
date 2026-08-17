@@ -41,10 +41,7 @@ using Il2CppScheduleOne.UI;
 using Il2CppScheduleOne.UI.MainMenu;
 using Il2CppScheduleOne.PlayerScripts;
 using Il2CppScheduleOne.DevUtilities;
-using Il2CppScheduleOne.AvatarFramework;
-using Il2CppScheduleOne.Map;
 using Il2CppFishNet.Managing;
-using Il2CppFishNet.Object;
 #endif
 
 [assembly: MelonInfo(typeof(NACops.NACops), NACops.BuildInfo.Name, NACops.BuildInfo.Version, NACops.BuildInfo.Author, NACops.BuildInfo.DownloadLink)]
@@ -68,7 +65,7 @@ namespace NACops
         public const string Description = "Crazyyyy cops";
         public const string Author = "XOWithSauce";
         public const string Company = null;
-        public const string Version = "2.1.2";
+        public const string Version = "2.1.3";
         public const string DownloadLink = null;
     }
 

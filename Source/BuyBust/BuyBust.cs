@@ -23,14 +23,13 @@ using Il2CppScheduleOne.AvatarFramework.Equipping;
 using Il2CppScheduleOne.Economy;
 using Il2CppScheduleOne.ItemFramework;
 using Il2CppScheduleOne.Law;
-using Il2CppScheduleOne.NPCs;
 using Il2CppScheduleOne.PlayerScripts;
 using Il2CppScheduleOne.Police;
 using Il2CppScheduleOne.Quests;
 using Il2CppScheduleOne.UI.Handover;
 using Il2CppScheduleOne.VoiceOver;
-using Il2CppScheduleOne.AvatarFramework;
 #endif
+
 namespace NACops
 {
     [HarmonyPatch(typeof(Customer), "ProcessHandover")]

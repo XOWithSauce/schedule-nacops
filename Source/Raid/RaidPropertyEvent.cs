@@ -33,7 +33,6 @@ using TMPro;
 #else
 using Il2CppScheduleOne.Core.Items.Framework;
 using Il2CppScheduleOne.Vision;
-using Il2CppScheduleOne.PlayerScripts;
 using Il2CppScheduleOne.Dialogue;
 using Il2CppScheduleOne.Employees;
 using Il2CppScheduleOne.AvatarFramework.Equipping;

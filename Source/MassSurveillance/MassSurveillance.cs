@@ -1,6 +1,3 @@
-
-
-
 using MelonLoader;
 using System.Collections;
 using UnityEngine;

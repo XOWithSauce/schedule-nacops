@@ -1,17 +1,15 @@
-
-
 using MelonLoader;
-using System.Reflection;
 using UnityEngine;
 using UnityEngine.AI;
 using System.Collections;
-using HarmonyLib;
 
 using static NACops.NACops;
 using static NACops.DebugModule;
 using static NACops.AvatarUtility;
 
 #if MONO
+using HarmonyLib;
+using System.Reflection;
 using ScheduleOne.AvatarFramework;
 using ScheduleOne.NPCs;
 using ScheduleOne.Police;
@@ -23,7 +21,6 @@ using FishNet.Managing;
 using FishNet.Object;
 #else
 using Il2CppScheduleOne.AvatarFramework;
-using Il2CppScheduleOne.Cartel;
 using Il2CppScheduleOne.NPCs;
 using Il2CppScheduleOne.Police;
 using Il2CppScheduleOne.Dialogue;
@@ -33,7 +30,6 @@ using Behaviour = Il2CppScheduleOne.NPCs.Behaviour.Behaviour;
 using Il2CppFishNet.Managing;
 using Il2CppFishNet.Object;
 #endif
-
 
 namespace NACops
 {
@@ -109,6 +105,8 @@ namespace NACops
             CapsuleCollider cc = sphere.GetComponent<CapsuleCollider>();
             cc.height = 1.85f;
             cc.radius = 0.5f;
+
+            offc.Awareness.SetAwarenessActive(false);
 
             obj.SetActive(true);
             Log("Finished replicating COP NPC");

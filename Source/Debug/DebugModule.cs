@@ -175,12 +175,10 @@ namespace NACops
         #region Cops data analytics DEBUG configuration only
         public static void OnRuntimeAnalyticsBuildEnd()
         {
-            MelonLogger.Msg("Failed to run runtime analytics! Command only available in DEBUG builds. Build mod from source using the DEBUG ");
 
             if (hrReqList.Count == 0 || exportingAnalytics) return;
             exportingAnalytics = true;
             var csvContent = new StringBuilder();
-
             csvContent.AppendLine("Day,Time,RequiredOfficers,ActiveActivities,StationOccupants,FootPatrols,Sentries,VehiclePatrols,Checkpoints");
 
             foreach (KeyValuePair<HourlyRequirements, string> kvp in hrReqList)

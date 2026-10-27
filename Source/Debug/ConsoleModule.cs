@@ -599,11 +599,15 @@ namespace NACops
         public class InvestigatorTarget : ConsoleCommandBase
         {
             public override string Name => "investigator";
-            public override CommandSupport SupportedMethods => CommandSupport.SpawnNoIndex;
+            public override CommandSupport SupportedMethods => CommandSupport.SpawnNoIndex | CommandSupport.Visualize;
+
+            public static bool IsConsoleForcingPhoneCallEvent = false;
+            public static bool IsConsoleForcingPhotoTakingEvent = false;
+            public static bool IsConsoleForcingEndEvents = false;
 
             public override void List()
             {
-                Log("Not supported");
+                Log("Visualize event index while active:\n- 'nacops visualize investigator 0': Stop investigator events\n- 'nacops visualize investigator 1': Start investigator phone call event\n- 'nacops visualize investigator 2': Start investigator photo event");
                 return;
             }
             public override void Spawn(int index)
@@ -621,7 +625,42 @@ namespace NACops
             }
             public override void Visualize(int index)
             {
-                Log("Not supported");
+                if (!investigatorActive)
+                {
+                    Log("Investigation is not active!\n  Use 'nacops spawn investigator' first!");
+                    return;
+                }
+
+                if (index == 0)
+                {
+                    IsConsoleForcingPhotoTakingEvent = false;
+                    IsConsoleForcingPhoneCallEvent = false;
+                    IsConsoleForcingEndEvents = true;
+                    return;
+                }
+
+                if (IsConsoleForcingPhoneCallEvent || IsConsoleForcingPhotoTakingEvent)
+                {
+                    Log($"Wait for previous investigator event to register or end before calling command again!\n- Phone Call Active: {IsConsoleForcingPhoneCallEvent}\n- Photo Taking Active: {IsConsoleForcingPhotoTakingEvent}");
+                    return;
+                }
+
+                switch(index)
+                {
+                    case 1:
+                        if (!IsConsoleForcingPhoneCallEvent)
+                            IsConsoleForcingPhoneCallEvent = true;
+                        break;
+
+                    case 2:
+                        if (!IsConsoleForcingPhotoTakingEvent)
+                            IsConsoleForcingPhotoTakingEvent = true;
+                        break;
+
+                    default:
+                        Log($"Failed to visualize investigator event with index {index}");
+                        break;
+                }
                 return;
             }
         }

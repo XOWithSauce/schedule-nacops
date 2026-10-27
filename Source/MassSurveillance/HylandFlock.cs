@@ -193,9 +193,9 @@ namespace NACops
             damageable.Rb = rb;
 
 #if MONO
-            damageable.onImpacted = (Action<Impact>)OnCameraImpacted;
+            damageable.OnImpacted += (Action<Impact>)OnCameraImpacted;
 #else
-            damageable.onImpacted = (Il2CppSystem.Action<Impact>)OnCameraImpacted;
+            damageable.OnImpacted += (Il2CppSystem.Action<Impact>)OnCameraImpacted;
 #endif
         }
 

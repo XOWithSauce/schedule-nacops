@@ -15,7 +15,6 @@ using static NACops.CopInitHelper;
 #if MONO
 using ScheduleOne.GameTime;
 using ScheduleOne.Money;
-using ScheduleOne.NPCs;
 using ScheduleOne.PlayerScripts;
 using ScheduleOne.Vision;
 using ScheduleOne.Map;
@@ -228,15 +227,18 @@ namespace NACops
             investigator.gameObject.SetActive(true);
             investigator.transform.Find("Avatar").gameObject.SetActive(true);
             investigator.GetComponent<NavMeshAgent>().enabled = true;
-            if (!investigator.Movement.IsPaused)
-                investigator.Movement.PauseMovement();
+            if (!investigator.Movement._agent.isStopped)
+                investigator.Movement.Stop();
             investigator.Awareness.SetAwarenessActive(true);
 
             yield return PIAvatar(investigator);
             SetVOEmitter(investigator);
             yield return AttemptWarp(investigator, Player.Local.CenterPointTransform);
-            investigator.Movement.ResumeMovement();
-            investigator.Movement.SpeedController.AddSpeedControl(new NPCSpeedController.SpeedControl("combat", 5, 0.15f));
+
+            if (investigator.Movement.SpeedController.DoesSpeedControlExist("pi_speed_control"))
+                investigator.Movement.SpeedController.RemoveSpeedControl("pi_speed_control");
+
+            investigator.Movement.SpeedController.AddSpeedControl(new ("pi_speed_control", 5, 0.15f));
 
             float elapsed = 0f;
             int proximityDelta = 0;
@@ -284,11 +286,10 @@ namespace NACops
                     {
                         investigator.PursuitBehaviour.Disable();
                     }
-
-                    investigator.Movement.SpeedController.AddSpeedControl(new NPCSpeedController.SpeedControl("combat", 5, 0.85f));
+                    if (investigator.Movement.SpeedController.DoesSpeedControlExist("pi_speed_control"))
+                        investigator.Movement.SpeedController.RemoveSpeedControl("pi_speed_control");
+                    investigator.Movement.SpeedController.AddSpeedControl(new ("pi_escape", 5, 0.85f));
                     investigator.Movement.SetDestination(PoliceStation.PoliceStations[0].Doors[0].AccessPoint);
-                    if (investigator.Movement.IsPaused)
-                        investigator.Movement.ResumeMovement();
                 }
             }
             afterAction = (UnityEngine.Events.UnityAction)AfterInvestigation;
@@ -309,10 +310,11 @@ namespace NACops
 
                 float distance = Vector3.Distance(investigator.transform.position, Player.Local.transform.position);
 
-
                 float distanceRelativeSpeed = Mathf.Lerp(0.1f, 0.55f, Mathf.Clamp01(distance / 80f));
-                investigator.Movement.SpeedController.AddSpeedControl(new NPCSpeedController.SpeedControl("combat", 5, distanceRelativeSpeed));
-                Log($"({distance}m) PI Speed now: " + investigator.Movement.SpeedController.ActiveSpeedControl.speed);
+                if (investigator.Movement.SpeedController.DoesSpeedControlExist("pi_speed_control"))
+                    investigator.Movement.SpeedController.RemoveSpeedControl("pi_speed_control");
+                investigator.Movement.SpeedController.AddSpeedControl(new("pi_speed_control", 5, distanceRelativeSpeed));
+                Log($"({distance}m) PI Speed now: " + investigator.Movement.SpeedController.MoveSpeed);
                 // check exit condition
                 if (!CanPIProceed(elapsed, distance))
                     break;
@@ -325,7 +327,7 @@ namespace NACops
                 }
                 lastWarp += waitedAmount;
                 elapsed += waitedAmount;
-                if (investigator.Movement.IsPaused)
+                if (investigator.Movement._agent.isStopped)
                     timeSinceLastTurn += waitedAmount;
                 if (isMakingCall)
                     phoneHeldInHandSecs += waitedAmount;
@@ -359,18 +361,16 @@ namespace NACops
                         isMovingPrioPos = false;
                         timeSpentMovingToPrio = 0f;
                     }
-                    else if (investigator.Movement.HasDestination && investigator.Movement.CurrentDestination == prioPos)
+                    else if (investigator.Movement._hasDestination && investigator.Movement.CurrentDestination == prioPos)
                     {
                         Log("Still travelling to prio pos...");
                     }
-                    else if ((!investigator.Movement.HasDestination || !investigator.Movement.IsMoving) && Vector3.Distance(investigator.CenterPoint, prioPos) > 2f)
+                    else if ((!investigator.Movement._hasDestination || !investigator.Movement.IsMoving) && Vector3.Distance(investigator.CenterPoint, prioPos) > 2f)
                     {
                         Log("Reset traverse to the prio pos");
                         investigator.Movement.SetDestination(prioPos);
-                        if (investigator.Movement.IsPaused)
-                            investigator.Movement.ResumeMovement();
                     }
-                    else if (!investigator.Movement.HasDestination && !investigator.Movement.IsMoving)
+                    else if (!investigator.Movement._hasDestination && !investigator.Movement.IsMoving)
                     {
                         if (Vector3.Distance(investigator.CenterPoint, prioPos) < 1.85f)
                         {
@@ -395,8 +395,12 @@ namespace NACops
                 {
                     Log("Attending call...");
                     proximityDelta += 1;
-                    if (phoneHeldInHandSecs >= UnityEngine.Random.Range(10f, 20f) || distance > 35f)
+                    bool forceEnd = ConsoleModule.InvestigatorTarget.IsConsoleForcingEndEvents;
+                    if (phoneHeldInHandSecs >= UnityEngine.Random.Range(10f, 20f) || distance > 35f || forceEnd)
                     {
+                        if (forceEnd)
+                            ConsoleModule.InvestigatorTarget.IsConsoleForcingEndEvents = false;
+
                         Log("End taking a call");
                         didFinishMakingACall = true;
                         isMakingCall = false;
@@ -442,10 +446,12 @@ namespace NACops
 
                 if (isTakingPhotos)
                 {
-                    Log("Taking video...");
+                    Log("Taking photos...");
                     sightedAmount += 1;
-                    if (!investigator.Movement.IsPaused)
-                        investigator.Movement.PauseMovement();
+                    bool forceEnd = ConsoleModule.InvestigatorTarget.IsConsoleForcingEndEvents;
+
+                    if (!investigator.Movement._agent.isStopped)
+                        investigator.Movement.Stop();
 
                     if (isInPrioPos)
                     {
@@ -469,8 +475,11 @@ namespace NACops
 
                     float randTime = isInPrioPos ? UnityEngine.Random.Range(20f, 40f) : UnityEngine.Random.Range(12f, 20f);
 
-                    if (photosTakenInSecs >= randTime || distance > 35f)
+                    if (photosTakenInSecs >= randTime || distance > 35f || forceEnd)
                     {
+                        if (forceEnd)
+                            ConsoleModule.InvestigatorTarget.IsConsoleForcingEndEvents = false;
+
                         Log("End taking Photos");
                         isTakingPhotos = false;
                         didFinishTakingPhotos = true;
@@ -502,7 +511,7 @@ namespace NACops
                     Log("PI Should Warp - dist " + distance);
                     if (lastWarp < maxWarpCd)
                     {
-                        if (!investigator.Movement.HasDestination)
+                        if (!investigator.Movement._hasDestination)
                         {
                             investigator.Movement.GetClosestReachablePoint(Player.Local.CenterPointTransform.position, out Vector3 pos);
                             if (pos != Vector3.zero)
@@ -511,9 +520,8 @@ namespace NACops
                         continue;
                     }
                     Log("PI Try Warp - dist " + distance);
-                    investigator.Movement.PauseMovement();
+                    investigator.Movement.Stop();
                     yield return AttemptWarp(investigator, Player.Local.CenterPointTransform);
-                    investigator.Movement.ResumeMovement();
                     Log("PI New dist " + distance);
                     lastWarp = 0f;
                 }
@@ -524,7 +532,7 @@ namespace NACops
                     if (pos == Vector3.zero || IsNearRoadNode(pos)) continue;
                     // At larger distances disregard the sight, simply travel
                     Vector3 currentDestination = Vector3.zero;
-                    if (investigator.Movement.HasDestination)
+                    if (investigator.Movement._hasDestination)
                         currentDestination = investigator.Movement.CurrentDestination;
                     else
                         currentDestination = investigator.CenterPoint;
@@ -535,10 +543,9 @@ namespace NACops
                     if (distance > 55f)
                     {
                         Log("PI Traverse - dist " + distance);
-                        if (investigator.Movement.IsPaused || !investigator.Movement.HasDestination)
+                        if (investigator.Movement._agent.isStopped || !investigator.Movement._hasDestination)
                         {
                             investigator.Movement.SetDestination(pos);
-                            investigator.Movement.ResumeMovement();
                         }
                         else
                         {
@@ -557,11 +564,9 @@ namespace NACops
                     // OR
                     // the new proposed location has guaranteed sightline to player
                     
-                    if ((isBetterPos && UnityEngine.Random.Range(0, 4) == 0) || !investigator.Movement.HasDestination || canSee)
+                    if ((isBetterPos && UnityEngine.Random.Range(0, 4) == 0) || !investigator.Movement._hasDestination || canSee)
                     {
-                        Log($"PI Traversing Better Distance:{isBetterPos} | noDest: {!investigator.Movement.HasDestination} | Can See:{canSee}");
-                        if (investigator.Movement.IsPaused)
-                            investigator.Movement.ResumeMovement();
+                        Log($"PI Traversing Better Distance:{isBetterPos} | noDest: {!investigator.Movement._hasDestination} | Can See:{canSee}");
                         investigator.Movement.SetDestination(pos);
                         shouldWaitRandom = UnityEngine.Random.Range(0, 2) == 0;
                     }
@@ -574,7 +579,7 @@ namespace NACops
                     bool shouldStop = false;
                     if (canSeePlayerCurrently || Player.Local.CurrentProperty != null || (distance <= 8f && UnityEngine.Random.Range(0, 3) == 0))
                     {
-                        if (!investigator.Movement.IsPaused || investigator.Movement.HasDestination)
+                        if (!investigator.Movement._agent.isStopped || investigator.Movement._hasDestination)
                         {
                             shouldStop = UnityEngine.Random.Range(0, 5) == 0;
                             if (shouldStop)
@@ -582,7 +587,7 @@ namespace NACops
                                 if (!IsNearRoadNode())
                                 {
                                     Log("Pause nearby!");
-                                    investigator.Movement.PauseMovement();
+                                    investigator.Movement.Stop();
                                 }
                                 else
                                 {
@@ -602,8 +607,16 @@ namespace NACops
                             sightedProperties.Add(key: Player.Local.CurrentProperty.PropertyCode, value: 1);
                     }
 
+                    // For console forced testing makes it easier to reproduce the event
+                    bool consoleForcedPrio = false;
+                    if (ConsoleModule.InvestigatorTarget.IsConsoleForcingPhotoTakingEvent)
+                    {
+                        Log("Forcing a photo taking event on investigator from console command");
+                        ConsoleModule.InvestigatorTarget.IsConsoleForcingPhotoTakingEvent = false;
+                        consoleForcedPrio = true;
+                    }
                     // For when current property that has priority positions
-                    if (Player.Local.CurrentProperty != null && !shouldStop && UnityEngine.Random.Range(0, 100) == 0)
+                    if (Player.Local.CurrentProperty != null && !shouldStop && (UnityEngine.Random.Range(0, 100) == 0 || consoleForcedPrio))
                     {
                         if (PropertyPreferPositions.ContainsKey(Player.Local.CurrentProperty.PropertyCode))
                         {
@@ -614,8 +627,6 @@ namespace NACops
                             prioPos = randomTuple.Item1;
                             prioRot = randomTuple.Item2;
                             investigator.Movement.SetDestination(prioPos);
-                            if (investigator.Movement.IsPaused)
-                                investigator.Movement.ResumeMovement();
                             continue;
                         }
                     }
@@ -649,9 +660,18 @@ namespace NACops
                         if (!isMakingCall && !isTakingPhotos && !didFinishMakingACall)
                         {
                             bool shouldMakeACall = UnityEngine.Random.Range(0, 80) == 0;
+                            
+                            // For console forced testing makes it easier to reproduce the event
+                            if (ConsoleModule.InvestigatorTarget.IsConsoleForcingPhoneCallEvent)
+                            {
+                                Log("Forcing a phone call event on investigator from console command");
+                                ConsoleModule.InvestigatorTarget.IsConsoleForcingPhoneCallEvent = false;
+                                shouldMakeACall = true;
+                            }
+
                             if (shouldMakeACall)
                             {
-                                Log("Start making a call");
+                                Log("INVESTIGATOR EVENT: Start making a call");
                                 isMakingCall = true;
                                 investigator.SetEquippable_Client(null, investigator.Behaviour.CallPoliceBehaviour.PhonePrefab.AssetPath);
                                 continue;
@@ -661,9 +681,17 @@ namespace NACops
                         if (!isMakingCall && !isTakingPhotos && !didFinishTakingPhotos)
                         {
                             bool shouldTakeVideo = UnityEngine.Random.Range(0, 100) == 0;
+                            // For console forced testing makes it easier to reproduce the event
+                            if (ConsoleModule.InvestigatorTarget.IsConsoleForcingPhotoTakingEvent)
+                            {
+                                Log("Forcing a photo taking event on investigator from console command");
+                                ConsoleModule.InvestigatorTarget.IsConsoleForcingPhotoTakingEvent = false;
+                                shouldTakeVideo = true;
+                            }
+
                             if (shouldTakeVideo)
                             {
-                                Log("Start taking a video");
+                                Log("INVESTIGATOR EVENT: Start taking a video");
                                 isTakingPhotos = true;
                                 MelonCoroutines.Start(StartTakePhotos());
                                 continue;
@@ -687,17 +715,13 @@ namespace NACops
                         if (conditionalReposition || timeSinceMonitorReposition > 20f)
                         {
                             Log($"PI Repositioning");
-                            if (investigator.Movement.IsPaused)
-                                investigator.Movement.ResumeMovement();
                             investigator.Movement.SetDestination(pos);
                             shouldWaitRandom = true;
                             timeSinceMonitorReposition = 0f;
                         }
-                        else if (canSee || (!investigator.Movement.HasDestination && !investigator.Movement.IsMoving && UnityEngine.Random.Range(0, 10) == 0))
+                        else if (canSee || (!investigator.Movement._hasDestination && !investigator.Movement.IsMoving && UnityEngine.Random.Range(0, 10) == 0))
                         {
                             Log($"PI Traversing Better position.");
-                            if (investigator.Movement.IsPaused)
-                                investigator.Movement.ResumeMovement();
                             investigator.Movement.SetDestination(pos);
                             timeSinceMonitorReposition = 0f;
                         }
@@ -749,7 +773,7 @@ namespace NACops
 
                             // else if player spent time inside, and was sighted outside atleast once
                             // and PI has sighted outside, and is still in the same property
-                            else if (investigationDelta >= 16 && proximityDelta > 20 && sightedAmount >= 10 && Player.Local.CurrentProperty != null && Player.Local.CurrentProperty.PropertyCode == propHeat.propertyCode)
+                            else if (investigationDelta >= 16 && proximityDelta > 20 && sightedAmount >= 5 && Player.Local.CurrentProperty != null && Player.Local.CurrentProperty.PropertyCode == propHeat.propertyCode)
                             {
                                 propHeat.propertyHeat += Mathf.RoundToInt((UnityEngine.Random.Range(4f, 6f) * investigationMultiplier));
                                 Log("Property heat increased ++");
@@ -758,7 +782,7 @@ namespace NACops
                             // else if the property heat is low enough,
                             // Player was nearby in property atleast twice,
                             // And player was sighted atleast 2 times
-                            else if (propHeat.propertyHeat < 8 && investigationDelta >= 10 && proximityDelta >= 20 && sightedAmount >= 10)
+                            else if (propHeat.propertyHeat < 8 && investigationDelta >= 10 && proximityDelta >= 20 && sightedAmount >= 3)
                             {
                                 propHeat.propertyHeat += Mathf.RoundToInt((UnityEngine.Random.Range(2f, 4f) * investigationMultiplier));
                                 Log("Property heat increased +");
@@ -806,10 +830,9 @@ namespace NACops
 
             investigator.transform.Find("Avatar").gameObject.SetActive(false);
 
-            if (!investigator.Movement.IsPaused)
-                investigator.Movement.PauseMovement();
+            if (!investigator.Movement._agent.isStopped)
+                investigator.Movement.Stop();
             investigator.GetComponent<NavMeshAgent>().enabled = false;
-
 
             try
             {
@@ -827,6 +850,13 @@ namespace NACops
             }
             isTakingPhotos = false;
             investigatorActive = false;
+
+            // Just in case
+            ConsoleModule.InvestigatorTarget.IsConsoleForcingEndEvents = false;
+            ConsoleModule.InvestigatorTarget.IsConsoleForcingPhoneCallEvent = false;
+            ConsoleModule.InvestigatorTarget.IsConsoleForcingPhotoTakingEvent = false;
+
+            yield break;
         }
 
 
@@ -980,7 +1010,7 @@ namespace NACops
 
         public static bool CanPIProceed(float timeElapsed, float distance)
         {
-            if (!investigator.Movement.CanMove() || timeElapsed >= maxInvestigationTime || Player.Local.CrimeData.CurrentPursuitLevel != PlayerCrimeData.EPursuitLevel.None)
+            if (!investigator.Movement.CanMove || timeElapsed >= maxInvestigationTime || Player.Local.CrimeData.CurrentPursuitLevel != PlayerCrimeData.EPursuitLevel.None)
                 return false;
 
             if (distance >= 120f || !investigator.Movement.CanGetTo(Player.Local.transform.position, proximityReq: 120f))

@@ -4,14 +4,18 @@ using UnityEngine;
 using static NACops.PrivateInvestigator;
 using static NACops.RuntimeImpostor;
 using static NACops.NACops;
+using static NACops.DebugModule;
 
 #if MONO
+using ScheduleOne.Core.Avatar;
+using ScheduleOne.Core.Avatar.Properties;
 using ScheduleOne.AvatarFramework;
 using ScheduleOne.Police;
 using ScheduleOne.VoiceOver;
 using ScheduleOne.NPCs;
-using static ScheduleOne.AvatarFramework.AvatarSettings;
 #else
+using Il2CppScheduleOne.Core.Avatar;
+using Il2CppScheduleOne.Core.Avatar.Properties;
 using Il2CppScheduleOne.AvatarFramework;
 using Il2CppScheduleOne.Police;
 using Il2CppScheduleOne.VoiceOver;
@@ -34,27 +38,31 @@ namespace NACops
         };
         public static readonly List<string> randomFaceLayers = new()
         {
-            "Avatar/Layers/Face/Face_SmugPout",
-            "Avatar/Layers/Face/Face_SlightSmile",
-            "Avatar/Layers/Face/Face_Neutral",
-            "Avatar/Layers/Face/Face_NeutralPout",
+            "smugpout",
+            "slightsmile",
+            "neutralface",
+            "openmouthsmile",
+            "slightfrown",
         };
+
         public static readonly List<string> randomMaleHairLayers = new()
         {
-            "Avatar/Hair/Balding/Balding",
-            "Avatar/Hair/BuzzCut/BuzzCut",
-            "Avatar/Hair/Peaked/Peaked",
+            "balding",
+            "buzzcut",
         };
+
         public static readonly List<string> randomFacialHairLayers = new()
         {
-            "Avatar/Layers/Face/FacialHair_Swirl",
-            "Avatar/Layers/Face/FacialHair_Goatee"
+            "beardbushy",
+            "beardfull",
+            "goatee",
+            "swirlymustache",
         };
         public static readonly List<string> randomFemaleHairLayers = new()
         {
-            "Avatar/Hair/MidFringe/MidFringe",
-            "Avatar/Hair/LowBun/LowBun",
-            "Avatar/Hair/DoubleTopKnot/DoubleTopKnot"
+            "midfringe",
+            "lowbun",
+            "doubletopknot"
         };
         public static readonly List<Color> randomHairColors = new()
         {
@@ -72,7 +80,7 @@ namespace NACops
             // Brown Blazer + Cap, blue shirt, gray pants
             {0, new List<Color>()
 			{
-				new Color(0.396f, 0.396f, 0.396f), // jeans
+				new Color(0.396f, 0.396f, 0.396f), // pants
                 new Color(0.326f, 0.578f, 0.896f), // shirt
                 new Color(0.151f, 0.151f, 0.151f), // sneakers
                 new Color(0.613f, 0.493f, 0.344f), // (rand) blazer
@@ -82,7 +90,7 @@ namespace NACops
             // Gray Blazer + Cap, orange shirt, blue pants
             {1, new List<Color>()
 			{
-				new Color(0.2588f, 0.3647f, 0.5490f), // jeans
+				new Color(0.2588f, 0.3647f, 0.5490f), // pants
                 new Color(0.7137f, 0.2941f, 0.1568f), // shirt
                 Color.black,                          // sneakers
                 new Color(0.1372f, 0.1058f, 0.0823f), // (rand) blazer
@@ -92,7 +100,7 @@ namespace NACops
             // Dark Gray Blazer + Light Gray Cap, blue shirt, blue pants
             {2, new List<Color>()
 			{
-				new Color(0.258f, 0.364f, 0.549f), // jeans
+				new Color(0.258f, 0.364f, 0.549f), // pants
                 new Color(0.326f, 0.578f, 0.896f), // shirt
                 Color.black,                       // sneakers
                 new Color(0.121f, 0.094f, 0.078f), // (rand) blazer
@@ -102,7 +110,7 @@ namespace NACops
             // gray Blazer + Light Gray Cap, black shirt, brown pants
             {3, new List<Color>()
 			{
-				new Color(0.615f, 0.478f, 0.313f), // jeans
+				new Color(0.615f, 0.478f, 0.313f), // pants
                 Color.black,                       // shirt
                 Color.black,                       // sneakers
                 new Color(0.396f, 0.396f, 0.396f), // (rand) blazer
@@ -117,122 +125,92 @@ namespace NACops
         public static List<VODatabase> maleVOs = new();
         public static List<VODatabase> femaleVOs = new();
 
-        public static void SetRandomAvatar(PoliceOfficer offc, ref AvatarSettings createdSettings)
+        public static void SetRandomOfficerAvatar(PoliceOfficer offc)
         {
-            AvatarSettings newSettings = ScriptableObject.CreateInstance<AvatarSettings>();
-
-
-            var originalAccessorySettings = offc.Avatar.CurrentSettings.AccessorySettings;
-            var originalBodySettings = offc.Avatar.CurrentSettings.BodyLayerSettings;
-#if MONO
-            List<LayerSetting> faceSettings = SetRandomLook(newSettings);
-
-            newSettings.AccessorySettings = new(originalAccessorySettings);
-            newSettings.BodyLayerSettings = new(originalBodySettings);
-            newSettings.FaceLayerSettings = faceSettings;
-#else
-            Il2CppSystem.Collections.Generic.List<LayerSetting> faceSettings = SetRandomLook(newSettings);
-
-            newSettings.AccessorySettings = new();
-            for (int i = 0; i < originalAccessorySettings.Count; i++)
-                newSettings.AccessorySettings.Add(originalAccessorySettings[i]);
-
-            newSettings.BodyLayerSettings = new();
-            for (int i = 0; i < originalBodySettings.Count; i++)
-                newSettings.BodyLayerSettings.Add(originalBodySettings[i]);
-#endif
-
-            newSettings.FaceLayerSettings = faceSettings;
-            offc.Avatar.LoadAvatarSettings(newSettings);
-
-            int id = offc.transform.root.gameObject.GetInstanceID();
-            if (instancedSettings.ContainsKey(id))
-            {
-                if (instancedSettings[id] != null)
-                    UnityEngine.Object.DestroyImmediate(instancedSettings[id]);
-
-                instancedSettings[id] = newSettings;
-            }
-            else
-                instancedSettings.Add(offc.transform.root.gameObject.GetInstanceID(), newSettings);
-
-            createdSettings = newSettings;
+            Log("Start random");
+            
+            NakedAppearance nakedAppearance = offc.Avatar.Appearance.AppliedNakedAppearance.Clone();
+            SetRandomLook(ref nakedAppearance);
+            Log("Load settings");
+            offc.Avatar.Appearance.ApplyNakedAppearance(nakedAppearance);
         }
 
-#if MONO
-        public static List<LayerSetting> SetRandomLook(AvatarSettings newSettings)
-#else
-        public static Il2CppSystem.Collections.Generic.List<LayerSetting> SetRandomLook(AvatarSettings newSettings)
-#endif
+        public static void SetRandomLook(ref NakedAppearance original)
         {
-#if MONO
-            List<LayerSetting> faceSettings = new();
-            for (int i = 0; i < 6; i++) faceSettings.Add(new LayerSetting() { layerPath = "", layerTint = Color.white });
+            Log("Set random look");
+            List<SerializedAvatarObject> createdObjects = new();
 
-#else
-            var faceSettings = new Il2CppSystem.Collections.Generic.List<LayerSetting>();
-            for (int i = 0; i < 6; i++) faceSettings.Add(new LayerSetting() { layerPath = "", layerTint = Color.white });
-#endif
+            SerializedColorProperty[] face0Properties = new SerializedColorProperty[1];
+            face0Properties[0] = new SerializedColorProperty("MainColor", new Color(0f, 0f, 0f, 1f));
+            SerializedAvatarObject face0 = new(randomFaceLayers[UnityEngine.Random.Range(0, randomFaceLayers.Count)], face0Properties);
+            createdObjects.Add(face0);
 
-            var face0 = faceSettings[0];
-            face0.layerPath = randomFaceLayers[UnityEngine.Random.Range(0, randomFaceLayers.Count)];
-            face0.layerTint = new Color(0f, 0f, 0f, 1f);
-            faceSettings[0] = face0;
+            original.Gender = UnityEngine.Random.Range(0f, 1f);
 
-            newSettings.Gender = (float)UnityEngine.Random.Range(0, 2);
 
-            if (UnityEngine.Random.Range(0f, 1f) > 0.6f && newSettings.Gender < 0.5f)
-            {
-                var face1 = faceSettings[1];
-                face1.layerPath = randomFacialHairLayers[UnityEngine.Random.Range(0, randomFacialHairLayers.Count)];
-                face1.layerTint = new Color(0f, 0f, 0f, 1f);
-                faceSettings[1] = face1;
-            }
 
-            var face3 = faceSettings[3];
-            face3.layerPath = "Avatar/Layers/Face/EyeShadow";
-            face3.layerTint = new Color(0f, 0f, 0f, 0.96f);
-            faceSettings[3] = face3;
+            SerializedColorProperty[] face2Properties = new SerializedColorProperty[1];
+            face2Properties[0] = new SerializedColorProperty("MainColor", new Color(0f, 0f, 0f, 0.8223f));
+            SerializedAvatarObject face2 = new("eyeshadow", face2Properties);
+            createdObjects.Add(face2);
 
             if (UnityEngine.Random.Range(0f, 1f) > 0.3f)
             {
-                var face4 = faceSettings[4];
-                string faceLayerPath = "";
-                if (UnityEngine.Random.Range(0f, 1f) > 0.5f)
-                    faceLayerPath = "Avatar/Layers/Face/OldPersonWrinkles";
-                else
-                    faceLayerPath = "Avatar/Layers/Face/Freckles";
-                face4.layerPath = faceLayerPath;
-                face4.layerTint = new Color(0f, 0f, 0f, 0.55f);
-                faceSettings[4] = face4;
+                string faceLayerID = "";
+                Color faceLayerColor;
+                faceLayerID = "oldpersonwrinkles";
+                faceLayerColor = new(0f, 0f, 0f, 1f);
+                SerializedColorProperty[] face3Properties = new SerializedColorProperty[1];
+                face3Properties[0] = new SerializedColorProperty("MainColor", faceLayerColor);
+                SerializedAvatarObject face3 = new(faceLayerID, face3Properties);
+                createdObjects.Add(face3);
             }
 
-            newSettings.UseCombinedLayer = false;
+            original.HairColor = randomHairColors[UnityEngine.Random.Range(0, randomHairColors.Count)];
 
-            newSettings.EyebrowScale = UnityEngine.Random.Range(1f, 1.1f);
-            newSettings.EyebrowThickness = UnityEngine.Random.Range(1f, 1.4f);
-            newSettings.EyebrowRestingHeight = UnityEngine.Random.Range(-1f, -1.40f);
-            newSettings.EyeBallTint = new Color(1f, 1f, 1f);
-            newSettings.EyeballMaterialIdentifier = "Default";
-            newSettings.Height = UnityEngine.Random.Range(0.96f, 1.08f);
-            newSettings.HairColor = randomHairColors[UnityEngine.Random.Range(0, randomHairColors.Count)];
-            if (newSettings.Gender < 0.5f)
-                newSettings.HairPath = randomMaleHairLayers[UnityEngine.Random.Range(0, randomMaleHairLayers.Count)];
+            if (UnityEngine.Random.Range(0f, 1f) > 0.6f && original.Gender < 0.5f)
+            {
+                SerializedColorProperty[] face1Properties = new SerializedColorProperty[1];
+                face1Properties[0] = new SerializedColorProperty("MainColor", original.HairColor);
+                SerializedAvatarObject face1 = new(randomFacialHairLayers[UnityEngine.Random.Range(0, randomFacialHairLayers.Count)], face1Properties);
+                createdObjects.Add(face1);
+            }
+
+            float scale = UnityEngine.Random.Range(1f, 1.1f);
+            float thickness = UnityEngine.Random.Range(1f, 1.4f);
+            float restHeight = UnityEngine.Random.Range(-1f, -1.40f);
+            EyebrowSettings eyebrowSetting = new(scale, thickness, restHeight, 0f, original.HairColor);
+
+            string hairID = "";
+            if (original.Gender < 0.5f)
+                hairID = randomMaleHairLayers[UnityEngine.Random.Range(0, randomMaleHairLayers.Count)];
             else
-                newSettings.HairPath = randomFemaleHairLayers[UnityEngine.Random.Range(0, randomFemaleHairLayers.Count)];
-            newSettings.Weight = UnityEngine.Random.Range(0.3f, 0.7f);
-            newSettings.PupilDilation = 0.55f;
-            newSettings.RightEyeLidColor = new Color(0.4118f, 0.3216f, 0.2471f);
-            newSettings.LeftEyeLidColor = new Color(0.4118f, 0.3216f, 0.2471f);
-            newSettings.RightEyeRestingState = new Eye.EyeLidConfiguration() { bottomLidOpen = 0.2719f, topLidOpen = 0.4313f };
-            newSettings.LeftEyeRestingState = new Eye.EyeLidConfiguration() { bottomLidOpen = 0.2719f, topLidOpen = 0.4313f };
-            newSettings.SkinColor = skinColors[UnityEngine.Random.Range(0, skinColors.Count)];
-            return faceSettings;
+                hairID = randomFemaleHairLayers[UnityEngine.Random.Range(0, randomFemaleHairLayers.Count)];
+            SerializedColorProperty[] hairProperties = new SerializedColorProperty[1];
+            hairProperties[0] = new SerializedColorProperty("MainColor", original.HairColor);
+            SerializedAvatarObject hair = new(hairID, hairProperties);
+            createdObjects.Add(hair);
+
+            original.Height = UnityEngine.Random.Range(1.66f, 1.85f);
+            original.Weight = UnityEngine.Random.Range(0.66f, 0.9f);
+
+            original.RightEyebrowSettings = eyebrowSetting;
+            original.LeftEyebrowSettings = eyebrowSetting;
+            original.RightEyelidSettings = EyelidSettings.Default;
+            original.LeftEyelidSettings = EyelidSettings.Default;
+            original.RightEyeSettings = EyeSettings.Default;
+            original.LeftEyeSettings = EyeSettings.Default;
+
+            original.SkinColor = skinColors[UnityEngine.Random.Range(0, skinColors.Count)];
+            original.AvatarObjects = createdObjects.ToArray();
+
+            Log("Ret face settings");
+            return;
         }
 
-        public static IEnumerator GenerateImpostor(PoliceOfficer offc, AvatarSettings settings)
+        public static IEnumerator GenerateImpostor(PoliceOfficer offc)
         {
-            offc.Movement.Agent.enabled = false;
+            offc.Movement._agent.enabled = false;
             offc.Movement.enabled = false;
             Vector3 origPos = offc.transform.position;
             Quaternion origRot = offc.transform.rotation;
@@ -241,213 +219,307 @@ namespace NACops
             offc.Avatar.Animation.SetGrounded(true);
             yield return Wait1;
             offc.Avatar.Animation.enabled = false;
-            offc.Avatar.Impostor.DisableImpostor();
+            offc.Avatar._impostor.Disable();
             offc.Avatar.BodyContainer.gameObject.SetActive(true);
             yield return Wait01;
             Texture2D tex = CreateImpostor(offc);
 
-            offc.Avatar.Impostor.EnableImpostor();
+            offc.Avatar._impostor.Enable();
             offc.transform.SetPositionAndRotation(origPos, origRot);
             offc.Avatar.Animation.enabled = true;
-            offc.Movement.Agent.enabled = true;
+            offc.Movement._agent.enabled = true;
             offc.Movement.enabled = true;
 
-            settings.ImpostorTexture = tex;
-            offc.Avatar.Impostor.SetAvatarSettings(settings);
+            offc.Avatar.SetImpostorTexture(tex);
             // fixes a bug where the mesh gets extended to the air after
             offc.Avatar.Animation.PlayStandUpAnimation();
             yield break;
         }
+
         public static IEnumerator PIAvatar(PoliceOfficer offc)
         {
-            AvatarSettings newSettings = ScriptableObject.CreateInstance<AvatarSettings>();
+            Log($"Removing unassigned avatar objects countpre: {offc.Avatar.Appearance._avatarObjectsContainer.transform.childCount}");
+            Transform target = offc.Avatar.Appearance._avatarObjectsContainer.transform;
 
-            var originalAccessorySettings = offc.Avatar.CurrentSettings.AccessorySettings;
-            var originalBodySettings = offc.Avatar.CurrentSettings.BodyLayerSettings;
+            offc.Avatar.Appearance.RemoveAllWornObjects(false);
 
-#if MONO
-            List<LayerSetting> bodySettings = new();
-            for (int i = 0; i < 6; i++) bodySettings.Add(new LayerSetting() { layerPath = "", layerTint = Color.white });
+            List<AvatarObject> destroyable = new();
+            for (int j = offc.Avatar.Appearance._avatarObjectsContainer.transform.childCount - 1; j >= 0; j--)
+            {
+                Transform avatarObjectTr = target.GetChild(j);
+                if (avatarObjectTr)
+                {
+                    AvatarObject comp = avatarObjectTr.gameObject.GetComponent<AvatarObject>();
 
-            List<AccessorySetting> accessorySettings = new();
-            for (int i = 0; i < 9; i++) accessorySettings.Add(new AccessorySetting() { path = "", color = Color.white });
+                    if (comp != null && !offc.Avatar.Appearance._nakedObjects.Contains(comp))
+                        destroyable.Add(comp);
+                }
+            }
+            foreach (AvatarObject avObj in destroyable)
+            {
+                UnityEngine.Object.Destroy(avObj.gameObject);
+            }
+            Log($"Removing unassigned avatar objects count post: {offc.Avatar.Appearance._avatarObjectsContainer.transform.childCount}");
 
-#else
-            var bodySettings = new Il2CppSystem.Collections.Generic.List<LayerSetting>();
-            for (int i = 0; i < 6; i++) bodySettings.Add(new LayerSetting() { layerPath = "", layerTint = Color.white });
+            // Retains AvatarAttachment and SkinnedAvatarAttachment type objects within Avatar transform hierarchy
+            // for the cloned objects, probably unassigned worn/naked objects after cloned so must remove those?
+            AvatarAttachment[] avatarAttachments = offc.Avatar.GetComponentsInChildren<AvatarAttachment>(true);
+            SkinnedAvatarAttachment[] skinnedAvatarAttachments = offc.Avatar.GetComponentsInChildren<SkinnedAvatarAttachment>(true);
 
-            var accessorySettings = new Il2CppSystem.Collections.Generic.List<AccessorySetting>();
-            for (int i = 0; i < 9; i++) accessorySettings.Add(new AccessorySetting() { path = "", color = Color.white });
-#endif
+            Log("Removing unassigned instantiated avatar objects");
+            if (avatarAttachments != null && avatarAttachments.Length > 0)
+            { 
+                Log($"Found {avatarAttachments.Length} avatar attachment type objects");
+                foreach (AvatarAttachment obj in avatarAttachments)
+                {
+                    UnityEngine.Object.Destroy(obj.gameObject);
+                }
+            }
+            if (skinnedAvatarAttachments != null && skinnedAvatarAttachments.Length > 0)
+            {
+                Log($"Found {skinnedAvatarAttachments.Length} skinned avatar attachment type objects");
+                foreach (SkinnedAvatarAttachment obj in skinnedAvatarAttachments)
+                {
+                    UnityEngine.Object.Destroy(obj.gameObject);
+                }
+            }
+
+            Outfit outfit = new();
 
             List<Color> palette = PIColorPalettes[UnityEngine.Random.Range(0, PIColorPalettes.Count)];
-            newSettings.FaceLayerSettings = SetRandomLook(newSettings);
 
+            NakedAppearance nakedAppearance = offc.Avatar.Appearance.AppliedNakedAppearance.Clone();
+            SetRandomLook(ref nakedAppearance);
+            Log("Load settings");
+            offc.Avatar.Appearance.ApplyNakedAppearance(nakedAppearance);
+
+            List<SerializedAvatarObject> randomWornObjects = new();
             bool hasSkirt = false;
-            if (newSettings.Gender > 0.5f && UnityEngine.Random.Range(0f, 1f) > 0.3f)
+            if (offc.Avatar.Appearance.AppliedNakedAppearance.Gender > 0.5f && UnityEngine.Random.Range(0f, 1f) > 0.8f)
             {
                 hasSkirt = true;
             }
             else
             {
-                var jeans = bodySettings[2];
-                jeans.layerPath = "Avatar/Layers/Bottom/Jeans";
-                jeans.layerTint = palette[0];
-                bodySettings[2] = jeans;
+                if (UnityEngine.Random.Range(0f, 1f) > 0.5f)
+                {
+                    SerializedAvatarObject obj = new();
+                    obj.Id = "jeans";
+                    obj.Colors = new[] { new SerializedColorProperty("MainColor", palette[0]) };
+                    randomWornObjects.Add(obj);
+                }
+                else
+                {
+                    SerializedAvatarObject obj = new();
+                    obj.Id = "cargopants";
+                    obj.Colors = new[] { new SerializedColorProperty("MainColor", palette[0]) };
+                    randomWornObjects.Add(obj);
+                }
             }
 
             if (UnityEngine.Random.Range(0f, 1f) > 0.5f)
             {
-                var shirt = bodySettings[3];
-                shirt.layerPath = "Avatar/Layers/Top/RolledButtonUp";
-                shirt.layerTint = palette[1];
-                bodySettings[3] = shirt;
+                SerializedAvatarObject obj = new();
+                obj.Id = "buttonupshirtrolled";
+                obj.Colors = new[] { new SerializedColorProperty("MainColor", palette[1]) };
+                randomWornObjects.Add(obj);
             }
             else
             {
-                var shirt = bodySettings[3];
-                shirt.layerPath = "Avatar/Layers/Top/FlannelButtonUp";
-                shirt.layerTint = palette[1];
-                bodySettings[3] = shirt;
+                SerializedAvatarObject obj = new();
+                obj.Id = "flannelbuttonupshirt";
+                obj.Colors = new[] { new SerializedColorProperty("MainColor", palette[1]) };
+                randomWornObjects.Add(obj);
             }
 
-            var sneakers = accessorySettings[0];
-            sneakers.path = "Avatar/Accessories/Feet/Sneakers/Sneakers";
-            sneakers.color = palette[2];
-            accessorySettings[0] = sneakers;
+            SerializedAvatarObject sneakers = new();
+            sneakers.Id = "sneakers";
+            sneakers.Colors = new[] { new SerializedColorProperty("MainColor", palette[2]) };
+            randomWornObjects.Add(sneakers);
 
             if (UnityEngine.Random.Range(0f, 1f) > 0.3f && !hasSkirt)
             {
-                var blazer = accessorySettings[2];
-                blazer.path = "Avatar/Accessories/Chest/Blazer/Blazer";
-                blazer.color = palette[3];
-                accessorySettings[2] = blazer;
+                if (UnityEngine.Random.Range(0f, 1f) > 0.5f)
+                {
+                    SerializedAvatarObject obj = new();
+                    obj.Id = "blazer";
+                    obj.Colors = new[] { new SerializedColorProperty("MainColor", palette[3]) };
+                    randomWornObjects.Add(obj);
+                }
+                else
+                {
+                    SerializedAvatarObject obj = new();
+                    obj.Id = "collarjacket";
+                    obj.Colors = new[] { new SerializedColorProperty("MainColor", palette[3]) };
+                    randomWornObjects.Add(obj);
+                }
             }
 
-            if (UnityEngine.Random.Range(0f, 1f) > 0.75f && newSettings.HairPath != "Avatar/Hair/DoubleTopKnot/DoubleTopKnot")
+            // check for hair layer not blocking the hat
+            bool hasHatBlockingHair = false;
+            foreach (AvatarObject obj in offc.Avatar.Appearance._nakedObjects)
             {
-                var cap = accessorySettings[3];
-                cap.path = "Avatar/Accessories/Head/Cap/Cap";
-                cap.color = palette[4];
-                accessorySettings[3] = cap;
+                if (obj.Id == "doubletopknot")
+                {
+                    hasHatBlockingHair = true;
+                    break;
+                }
             }
-            else if (UnityEngine.Random.Range(0f, 1f) > 0.90f && newSettings.Gender < 0.5f)
+
+            if (UnityEngine.Random.Range(0f, 1f) > 0.75f && !hasHatBlockingHair)
             {
-                var beanie = accessorySettings[3];
-                beanie.path = "Avatar/Accessories/Head/Beanie/Beanie";
-                beanie.color = palette[4];
-                accessorySettings[3] = beanie;
-                newSettings.HairPath = "";
+                SerializedAvatarObject obj = new();
+                obj.Id = "cap";
+                obj.Colors = new[] { new SerializedColorProperty("MainColor", palette[4]) };
+                randomWornObjects.Add(obj);
+            }
+            else if (UnityEngine.Random.Range(0f, 1f) > 0.90f && offc.Avatar.Appearance.AppliedNakedAppearance.Gender < 0.5f && !hasHatBlockingHair)
+            {
+                SerializedAvatarObject obj = new();
+                obj.Id = "beanie";
+                obj.Colors = new[] { new SerializedColorProperty("MainColor", palette[4]) };
+                randomWornObjects.Add(obj);
             }
 
             if (hasSkirt)
             {
-                var skirt = accessorySettings[4];
-                skirt.path = "Avatar/Accessories/Bottom/MediumSkirt/MediumSkirt";
-                skirt.color = palette[0];
-                accessorySettings[4] = skirt;
+                SerializedAvatarObject obj = new();
+                obj.Id = "skirt";
+                obj.Colors = new[] { new SerializedColorProperty("MainColor", palette[0]) };
+                randomWornObjects.Add(obj);
             }
 
             if (UnityEngine.Random.Range(0f, 1f) > 0.8f)
             {
-                var glasses = accessorySettings[5];
-                glasses.path = "Avatar/Accessories/Head/LegendSunglasses/LegendSunglasses";
-                glasses.color = new Color(0.70f, 0.717f, 0.76f);
-                accessorySettings[5] = glasses;
+                SerializedAvatarObject obj = new();
+                obj.Id = "thelegendsunglasses";
+                obj.Colors = new[] { new SerializedColorProperty("MainColor", new Color(0.70f, 0.717f, 0.76f)) };
+                randomWornObjects.Add(obj);
             }
 
-            newSettings.AccessorySettings = accessorySettings;
-            newSettings.BodyLayerSettings = bodySettings;
+            Log("Avatar outfit settings created apply...");
+            //offc.Avatar.LoadAvatarSettings(newSettings);
+            outfit.AvatarObjects = randomWornObjects.ToArray();
+            offc.Avatar.Appearance.ApplyOutfit(outfit);
 
-            offc.Avatar.LoadAvatarSettings(newSettings);
+            offc.NPCData.BasicInfo.FirstName = offc.Avatar.Appearance.AppliedNakedAppearance.Gender < 0.5f ? randomMaleNames[UnityEngine.Random.Range(0, randomMaleNames.Count)] : randomFemaleNames[UnityEngine.Random.Range(0, randomFemaleNames.Count)];
 
-            offc.NPCData.BasicInfo.FirstName = newSettings.Gender < 0.5f ? randomMaleNames[UnityEngine.Random.Range(0, randomMaleNames.Count)] : randomFemaleNames[UnityEngine.Random.Range(0, randomFemaleNames.Count)];
-
-            int id = offc.transform.root.gameObject.GetInstanceID();
-            if (instancedSettings.ContainsKey(id))
-            {
-                if (instancedSettings[id] != null) 
-                    UnityEngine.Object.DestroyImmediate(instancedSettings[id]);
-
-                instancedSettings[id] = newSettings;
-            }
-            else
-                instancedSettings.Add(offc.transform.root.gameObject.GetInstanceID(), newSettings);
-
-            yield return GenerateImpostor(offc, newSettings);
+            Log("Create impostor");
+            yield return GenerateImpostor(offc);
             yield break;
         }
 
         public static IEnumerator SetRaiderAvatar(PoliceOfficer offc)
         {
-            AvatarSettings newSettings = ScriptableObject.CreateInstance<AvatarSettings>();
+            offc.Avatar.Appearance.RemoveAllWornObjects(false);
+            Transform target = offc.Avatar.Appearance._avatarObjectsContainer.transform;
 
-            var originalAccessorySettings = offc.Avatar.CurrentSettings.AccessorySettings;
-            var originalBodySettings = offc.Avatar.CurrentSettings.BodyLayerSettings;
+            List<AvatarObject> destroyable = new();
+            for (int j = offc.Avatar.Appearance._avatarObjectsContainer.transform.childCount - 1; j >= 0; j--)
+            {
+                Transform avatarObjectTr = target.GetChild(j);
+                if (avatarObjectTr)
+                {
+                    AvatarObject comp = avatarObjectTr.gameObject.GetComponent<AvatarObject>();
 
-#if MONO
-            List<LayerSetting> bodySettings = new();
-            for (int i = 0; i < 6; i++) bodySettings.Add(new LayerSetting() { layerPath = "", layerTint = Color.white });
+                    if (comp != null && !offc.Avatar.Appearance._nakedObjects.Contains(comp))
+                        destroyable.Add(comp);
+                }
+            }
+            foreach (AvatarObject avObj in destroyable)
+            {
+                UnityEngine.Object.Destroy(avObj.gameObject);
+            }
+            Log($"Removing unassigned avatar objects count post: {offc.Avatar.Appearance._avatarObjectsContainer.transform.childCount}");
 
-            List<AccessorySetting> accessorySettings = new();
-            for (int i = 0; i < 9; i++) accessorySettings.Add(new AccessorySetting() { path = "", color = Color.white });
+            // Retains AvatarAttachment and SkinnedAvatarAttachment type objects within Avatar transform hierarchy
+            // for the cloned objects, probably unassigned worn/naked objects after cloned so must remove those?
+            AvatarAttachment[] avatarAttachments = offc.Avatar.GetComponentsInChildren<AvatarAttachment>(true);
+            SkinnedAvatarAttachment[] skinnedAvatarAttachments = offc.Avatar.GetComponentsInChildren<SkinnedAvatarAttachment>(true);
 
-#else
-            var bodySettings = new Il2CppSystem.Collections.Generic.List<LayerSetting>();
-            for (int i = 0; i < 6; i++) bodySettings.Add(new LayerSetting() { layerPath = "", layerTint = Color.white });
+            Log("Removing unassigned instantiated avatar objects");
+            if (avatarAttachments != null && avatarAttachments.Length > 0)
+            {
+                Log($"Found {avatarAttachments.Length} avatar attachment type objects");
+                foreach (AvatarAttachment obj in avatarAttachments)
+                {
+                    UnityEngine.Object.Destroy(obj.gameObject);
+                }
+            }
+            if (skinnedAvatarAttachments != null && skinnedAvatarAttachments.Length > 0)
+            {
+                Log($"Found {skinnedAvatarAttachments.Length} skinned avatar attachment type objects");
+                foreach (SkinnedAvatarAttachment obj in skinnedAvatarAttachments)
+                {
+                    UnityEngine.Object.Destroy(obj.gameObject);
+                }
+            }
 
-            var accessorySettings = new Il2CppSystem.Collections.Generic.List<AccessorySetting>();
-            for (int i = 0; i < 9; i++) accessorySettings.Add(new AccessorySetting() { path = "", color = Color.white });
-#endif
+            Outfit outfit = new();
 
-            var jeans = bodySettings[2];
-            jeans.layerPath = "Avatar/Layers/Bottom/Jeans";
-            jeans.layerTint = new Color(0.063f, 0.102f, 0.141f);
-            bodySettings[2] = jeans;
+            NakedAppearance nakedAppearance = offc.Avatar.Appearance.AppliedNakedAppearance.Clone();
+            SetRandomLook(ref nakedAppearance);
+            Log("Load settings");
+            offc.Avatar.Appearance.ApplyNakedAppearance(nakedAppearance);
+            List<SerializedAvatarObject> raiderObjects = new();
 
-            var shirt = bodySettings[3];
-            shirt.layerPath = "Avatar/Layers/Top/RolledButtonUp";
-            shirt.layerTint = new Color(0.012f, 0.161f, 0.31f);
-            bodySettings[3] = shirt;
-
-            var glove = bodySettings[4];
-            glove.layerPath = "Avatar/Layers/Accessories/FingerlessGloves";
-            glove.layerTint = new Color(0.290f, 0.313f, 0.349f);
-            bodySettings[4] = glove;
-
-            var sneakers = accessorySettings[0];
-            sneakers.path = "Avatar/Accessories/Feet/CombatBoots/CombatBoots";
-            sneakers.color = new Color(0.470f, 0.462f, 0.400f);
-            accessorySettings[0] = sneakers;
-
-            var belt = accessorySettings[1];
-            belt.path = "Avatar/Accessories/Waist/PoliceBelt/PoliceBelt";
-            belt.color = new Color(0.063f, 0.102f, 0.141f);
-            accessorySettings[1] = belt;
-
-            var vest = accessorySettings[2];
-            vest.path = "Avatar/Accessories/Chest/BulletproofVest/BulletproofVest_Police";
-            vest.color = new Color(0.063f, 0.102f, 0.141f);
-            accessorySettings[2] = vest;
-
-            var cap = accessorySettings[3];
-            cap.path = "Avatar/Accessories/Head/PoliceCap/PoliceCap";
-            cap.color = new Color(0.290f, 0.313f, 0.349f);
-            accessorySettings[3] = cap;
+            SerializedAvatarObject jeans = new();
+            jeans.Id = "jeans";
+            jeans.Colors = new[] { new SerializedColorProperty("MainColor", new Color(0.063f, 0.102f, 0.141f)) };
+            raiderObjects.Add(jeans);
 
             if (UnityEngine.Random.Range(0f, 1f) > 0.5f)
             {
-                var glasses = accessorySettings[5];
-                glasses.path = "Avatar/Accessories/Head/LegendSunglasses/LegendSunglasses";
-                glasses.color = new Color(0.70f, 0.717f, 0.76f);
-                accessorySettings[5] = glasses;
+                SerializedAvatarObject obj = new();
+                obj.Id = "buttonupshirtrolled";
+                obj.Colors = new[] { new SerializedColorProperty("MainColor", new Color(0.012f, 0.161f, 0.31f)) };
+                raiderObjects.Add(obj);
+            }
+            else
+            {
+                SerializedAvatarObject obj = new();
+                obj.Id = "flannelbuttonupshirt";
+                obj.Colors = new[] { new SerializedColorProperty("MainColor", new Color(0.012f, 0.161f, 0.31f)) };
+                raiderObjects.Add(obj);
             }
 
-            newSettings.FaceLayerSettings = SetRandomLook(newSettings);
-            newSettings.AccessorySettings = accessorySettings;
-            newSettings.BodyLayerSettings = bodySettings;
+            SerializedAvatarObject glove = new();
+            glove.Id = "fingerlessgloves";
+            glove.Colors = new[] { new SerializedColorProperty("MainColor", new Color(0.290f, 0.313f, 0.349f)) };
+            raiderObjects.Add(glove);
 
-            offc.Avatar.LoadAvatarSettings(newSettings);
+            SerializedAvatarObject sneakers = new();
+            sneakers.Id = "combatboots";
+            sneakers.Colors = new[] { new SerializedColorProperty("MainColor", new Color(0.470f, 0.462f, 0.400f)) };
+            raiderObjects.Add(sneakers);
+
+            SerializedAvatarObject belt = new();
+            belt.Id = "policebelt";
+            belt.Colors = new[] { new SerializedColorProperty("MainColor", new Color(0.063f, 0.102f, 0.141f)) };
+            raiderObjects.Add(belt);
+
+            SerializedAvatarObject vest = new();
+            vest.Id = "policetacticalvest";
+            vest.Colors = new[] { new SerializedColorProperty("MainColor", new Color(0.063f, 0.102f, 0.141f)) };
+            raiderObjects.Add(vest);
+
+            SerializedAvatarObject cap = new();
+            cap.Id = "policecap";
+            cap.Colors = new[] { new SerializedColorProperty("MainColor", new Color(0.290f, 0.313f, 0.349f)) };
+            raiderObjects.Add(cap);
+
+            if (UnityEngine.Random.Range(0f, 1f) > 0.5f)
+            {
+                SerializedAvatarObject glasses = new();
+                glasses.Id = "legendsunglasses";
+                glasses.Colors = new[] { new SerializedColorProperty("MainColor", new Color(0.70f, 0.717f, 0.76f)) };
+                raiderObjects.Add(glasses);
+            }
+
+            //offc.Avatar.LoadAvatarSettings(newSettings);
+            outfit.AvatarObjects = raiderObjects.ToArray();
+            offc.Avatar.Appearance.ApplyOutfit(outfit);
+
             yield return null;
         }
 
@@ -464,7 +536,7 @@ namespace NACops
                 if (db.name == "Female1 VO" || db.name == "Female2 VO" || db.name == "Timid VO")
                     femaleVOs.Add(db);
             }
-            DebugModule.Log("Finished settting up VODatabase refs");
+            Log("Finished settting up VODatabase refs");
         }
 
         public static void SetVOEmitter(NPC npc)
@@ -476,7 +548,7 @@ namespace NACops
                 SetupVODatabaseRefs();
             }
 
-            if (npc.Avatar.CurrentSettings.Gender < 0.5f)
+            if (npc.Avatar.Appearance.AppliedNakedAppearance.Gender < 0.5f)
             {
                 npc.VoiceOverEmitter.SetDatabase(maleVOs[UnityEngine.Random.Range(0, maleVOs.Count)]);
                 npc.VoiceOverEmitter.SetDefaultPitch(UnityEngine.Random.Range(0.90f, 0.98f));

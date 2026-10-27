@@ -39,9 +39,9 @@ namespace NACops
 
         [HarmonyPrefix]
 #if MONO
-        public static bool Prefix(Customer __instance, HandoverScreen.EHandoverOutcome outcome, Contract contract, List<ItemInstance> items, bool handoverByPlayer, bool giveBonuses = true)
+        public static bool Prefix(Customer __instance, Contract contract, List<ItemInstance> items, bool handoverByPlayer, bool giveBonuses = true)
 #else
-        public static bool Prefix(Customer __instance, HandoverScreen.EHandoverOutcome outcome, Contract contract, Il2CppSystem.Collections.Generic.List<ItemInstance> items, bool handoverByPlayer, bool giveBonuses = true)
+        public static bool Prefix(Customer __instance, Contract contract, Il2CppSystem.Collections.Generic.List<ItemInstance> items, bool handoverByPlayer, bool giveBonuses = true)
 #endif
         {
             MelonCoroutines.Start(PreProcessHandover(__instance, handoverByPlayer));
@@ -71,8 +71,8 @@ namespace NACops
             buyBustCop.gameObject.SetActive(true);
             buyBustCop.transform.Find("Avatar").gameObject.SetActive(true);
             buyBustCop.GetComponent<NavMeshAgent>().enabled = true;
-            if (!buyBustCop.Movement.IsPaused)
-                buyBustCop.Movement.PauseMovement();
+            if (!buyBustCop.Movement._agent.enabled)
+                buyBustCop.Movement.SetAgentEnabled(true);
             buyBustCop.Awareness.SetAwarenessActive(true);
 
             Player target = Player.Local;
@@ -82,7 +82,7 @@ namespace NACops
             if (flag && closest != Vector3.zero)
             {
                 buyBustCop.Movement.Warp(closest);
-                buyBustCop.Movement.ResumeMovement();
+                buyBustCop.Movement.SetAgentEnabled(true);
                 Log("Drug bust officer spawned now at " + buyBustCop.CenterPoint);
                 buyBustCop.ChatterVO.Play(EVOLineType.Command);
                 buyBustCop.Movement.FacePoint(customer.transform.position);
@@ -176,9 +176,7 @@ namespace NACops
 
             buyBustCop.transform.Find("Avatar").gameObject.SetActive(false);
 
-            if (!buyBustCop.Movement.IsPaused)
-                buyBustCop.Movement.PauseMovement();
-            buyBustCop.GetComponent<NavMeshAgent>().enabled = false;
+            buyBustCop.Movement.SetAgentEnabled(false);
             Log("Disposed summoned bustcop");
             yield break;
         }

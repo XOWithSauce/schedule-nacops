@@ -110,7 +110,6 @@ namespace NACops
 
         public static readonly List<string> raidOfficerLines = new()
         {
-
             "We are shutting this business down!", 
             "Get on the ground!", 
             "Hyland Point Police! Drop your weapons!",
@@ -278,6 +277,7 @@ namespace NACops
                 myNpc.NPCData.Inventory.CanBePickpocketed = false;
                 myNpc.NPCData.WeatherBehaviour.UseUmbrellaChance = 0f;
                 myNpc.Actions._canUseUmbrella = false;
+                myNpc.HasUmbrella = false;
 
                 if (!NPCManager.NPCRegistry.Contains(myNpc))
                     NPCManager.NPCRegistry.Add(myNpc);
@@ -301,15 +301,15 @@ namespace NACops
                     targetProperty = targetProperty
                 };
                 offc.Behaviour.ScheduleManager.DisableSchedule();
-                offc.Movement.PauseMovement();
-                offc.Movement.Agent.areaMask = 57;
+                offc.Movement.Stop();
+                offc.Movement._agent.areaMask = 57;
                 offc.PursuitBehaviour.arrestingEnabled = false;
                 offc.Movement.Warp(Singleton<Map>.Instance.PoliceStation.Doors[0].AccessPoint);
                 coros.Add(MelonCoroutines.Start(SetRaiderAvatar(offc)));
                 currentRaidOfficers.Add(raidOfficer);
 
                 offc.NPCData.Health.MaxHealth = raidConfig.RaiderMaxHealth;
-                offc.Health.Health = raidConfig.RaiderMaxHealth;
+                offc.Health.RestoreHealth();
                 offc.Behaviour.CombatBehaviour.SetWeapon(offc.GunPrefab != null ? offc.GunPrefab.AssetPath : string.Empty);
 #if MONO
                 AvatarRangedWeapon wep = offc.Behaviour.CombatBehaviour.currentWeapon as AvatarRangedWeapon;
@@ -322,47 +322,11 @@ namespace NACops
                 wep.MinUseRange = 0.1f;
                 wep.MaxFireRate = 0.8f;
 
-                offc.Movement.SpeedController.AddSpeedControl(new NPCSpeedController.SpeedControl("combat", 5, raidConfig.TraverseToPropertySpeed));
-
-                // Remove the required visual states
+                offc.Movement.SpeedController.AddSpeedControl("traverse_property", raidConfig.TraverseToPropertySpeed, 5);
                 raidOfficerObjIDs.Add(offc.transform.root.gameObject.GetInstanceID());
-                /*
-                 offc.Awareness.enabled = false;
-#if MONO
-                ISightable sightable = (ISightable)Player.Local;
-                Dictionary<EVisualState, VisionCone.StateContainer> newStates = new();
-#else
-                ISightable sightable = Player.Local.TryCast<ISightable>();
-                Il2CppSystem.Collections.Generic.Dictionary<EVisualState, VisionCone.StateContainer> newStates = new();
-#endif
-                if (sightable == null)
-                {
-                    Log("Warning sightable is null");
-                }
-                else
-                {
-                    if (offc.Awareness.VisionCone.stateSettings.ContainsKey(sightable))
-                    {
-                        foreach (var kvp in offc.Awareness.VisionCone.stateSettings[sightable])
-                        {
-                            if (raiderDisabledVisualStates.Contains(kvp.Key))
-                                continue;
-                            else
-                                newStates.Add(kvp.Key, kvp.Value);
-                        }
-                    }
-                }
-                if (newStates.Count == 0)
-                {
-                    Log("Something failed while applying visual state modification");
-                }
-                else if (sightable != null)
-                {
-                    offc.Awareness.VisionCone.stateSettings[sightable] = newStates;
-                }
-                offc.Awareness.enabled = true;
-                 */
 
+                offc.transform.parent = copNPCParent;
+                offc._defaultParent = copNPCParent;
             }
 
             AssignRaidOfficerRole(targetProperty);
@@ -449,9 +413,8 @@ namespace NACops
                 yield return Wait1;
                 if (!registered) yield break;
 
-                offc.officer.Movement.ObstacleAvoidanceEnabled = true;
-                offc.officer.Movement.Agent.avoidancePriority = 10;
-                offc.officer.Movement.ResumeMovement();
+                offc.officer.Movement.SetObstacleAvoidanceEnabled(true);
+                offc.officer.Movement._agent.avoidancePriority = 10;
                 offc.officer.Movement.SetDestination(pos: groupPosition, maximumDistanceForSuccess: 4f, cacheMaxDistSqr: 5f);
                 coros.Add(MelonCoroutines.Start(MonitorTraversal(offc, groupPosition)));
                 i++;
@@ -511,12 +474,10 @@ namespace NACops
                     break;
                 }
 
-                if (!movement.HasDestination && movement.CanMove())
+                if (!movement._hasDestination && movement.CanMove)
                 {
                     Log("Officer does not have destination but can continue, reset");
                     offc.officer.Movement.SetDestination(pos: groupPosition);
-                    if (movement.IsPaused)
-                        movement.ResumeMovement();
                     continue;
                 }
                 // anything else to check?
@@ -533,7 +494,7 @@ namespace NACops
         {
             yield return Wait2;
             if (!registered) yield break;
-            offc.officer.Movement.PauseMovement();
+            offc.officer.Movement.Stop();
 
             Log("Wait for Arrival");
             int maxWait = 30;
@@ -556,8 +517,8 @@ namespace NACops
             }
 
             //offc.officer.Behaviour.CombatBehaviour.SetWeapon(offc.officer.GunPrefab != null ? offc.officer.GunPrefab.AssetPath : string.Empty);
-            offc.officer.Movement.SpeedController.AddSpeedControl(new NPCSpeedController.SpeedControl("combat", 5, raidConfig.ClearPropertySpeed));
-
+            offc.officer.Movement.SpeedController.RemoveSpeedControl("traverse_property");
+            offc.officer.Movement.SpeedController.AddSpeedControl("clear_property", raidConfig.ClearPropertySpeed, 5);
             // Set raise weapon rarely
             if (UnityEngine.Random.Range(0f, 1f) > 0.80f)
             {
@@ -847,9 +808,6 @@ namespace NACops
             walkCallback = (Il2CppSystem.Action<NPCMovement.WalkResult>)OnTraverseToEntityEnded;
 #endif
             
-            if (offc.officer.Movement.IsPaused)
-                offc.officer.Movement.ResumeMovement();
-
 
             if (!offc.officer.Movement.CanGetTo(ap.position))
             {
@@ -859,7 +817,7 @@ namespace NACops
                 BeginRoleAction(offc); // back to start
                 yield break;
             }
-            if (!offc.officer.Movement.CanMove())
+            if (!offc.officer.Movement.CanMove)
             {
                 yield return Wait05;
                 Log("Officer cant move!", offc.Name);
@@ -1189,8 +1147,6 @@ namespace NACops
             if (offc.officer.Behaviour.activeBehaviour != null && (offc.officer.Behaviour.activeBehaviour == offc.officer.Behaviour.CombatBehaviour || offc.officer.Behaviour.activeBehaviour == offc.officer.PursuitBehaviour))
             {
                 Log("Cant continue due to combat or crime status");
-                if (offc.officer.Movement.IsPaused)
-                    offc.officer.Movement.ResumeMovement();
                 coros.Add(MelonCoroutines.Start(WaitCombatEnd(offc)));
                 return false;
             }
@@ -1209,7 +1165,7 @@ namespace NACops
             if (raidOfficersAlive > 0)
                 raidOfficersAlive--;
             deadRaidOfficers.Add(offc);
-            if (offc.officer.Movement.CanMove())
+            if (offc.officer.Movement.CanMove)
                 offc.officer.Movement.SetDestination(PoliceStation.PoliceStations[0].Doors[0].AccessPoint);
 
             yield return Wait30;

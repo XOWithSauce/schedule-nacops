@@ -10,22 +10,24 @@ using static NACops.AvatarUtility;
 #if MONO
 using HarmonyLib;
 using System.Reflection;
-using ScheduleOne.AvatarFramework;
 using ScheduleOne.NPCs;
 using ScheduleOne.Police;
 using ScheduleOne.Dialogue;
 using ScheduleOne.Map;
 using ScheduleOne.NPCs.Framework;
+using ScheduleOne.Core.Avatar;
+using ScheduleOne.Law;
 using Behaviour = ScheduleOne.NPCs.Behaviour.Behaviour;
 using FishNet.Managing;
 using FishNet.Object;
 #else
-using Il2CppScheduleOne.AvatarFramework;
 using Il2CppScheduleOne.NPCs;
 using Il2CppScheduleOne.Police;
 using Il2CppScheduleOne.Dialogue;
 using Il2CppScheduleOne.Map;
 using Il2CppScheduleOne.NPCs.Framework;
+using Il2CppScheduleOne.Core.Avatar;
+using Il2CppScheduleOne.Law;
 using Behaviour = Il2CppScheduleOne.NPCs.Behaviour.Behaviour;
 using Il2CppFishNet.Managing;
 using Il2CppFishNet.Object;
@@ -33,7 +35,6 @@ using Il2CppFishNet.Object;
 
 namespace NACops
 {
-
     public static class CopInitHelper
     {
 #if MONO
@@ -46,12 +47,12 @@ namespace NACops
         public static int investigatorID;
         public static PoliceOfficer buyBustCop;
         public static int buyBustCopID;
+        public static Transform copNPCParent;
+
         public static IEnumerator ReplicateCopNPC()
         {
             Log("Replicating COP NPC");
             PoliceOfficer officer = UnityEngine.Object.FindObjectOfType<PoliceOfficer>();
-
-            AvatarSettings copySettings = officer.Avatar.CurrentSettings;
 
             if (officer == null)
             {
@@ -73,6 +74,12 @@ namespace NACops
             offc.AutoDeactivate = false; // Prevent from returning to station and from being added to officer pool
 
             clone.name = $"RuntimeOfficer";
+            if (officer._defaultParent != null)
+            {
+                clone.transform.parent = officer._defaultParent;
+                offc._defaultParent = officer._defaultParent;
+                copNPCParent = officer._defaultParent;
+            }
             yield return MelonCoroutines.Start(InitiateClone(newNob, networkManager));
 
             npc.NPCData.BasicInfo.ID = "officerPrefab";
@@ -80,7 +87,6 @@ namespace NACops
             if (!NPCManager.NPCRegistry.Contains(npc))
                 NPCManager.NPCRegistry.Add(npc);
 
-            npc.Avatar.LoadAvatarSettings(copySettings);
             offc.PursuitBehaviour.arrestingEnabled = false;
 
             try
@@ -93,18 +99,20 @@ namespace NACops
             }
 
             offc.Behaviour.ScheduleManager.DisableSchedule();
-            offc.Movement.PauseMovement();
+            offc.Movement.Stop();
+
+            if (offc.Awareness != null)
+            {
+                offc.Awareness.SetAwarenessActive(false);
+                Log("Awareness disabled");
+            }
+            else
+            {
+                Log("Awareness does not exist yet");
+            }
+
             if (PoliceOfficer.Officers.Contains(offc))
                 PoliceOfficer.Officers.Remove(offc);
-            
-            // for some reason the interactable object keeps bugging out
-            // maybe due to some collider being in wrong laYer or something is unassigned
-            // to fix, increase sphere size here
-            DialogueController_Police dg = offc.GetComponentInChildren<DialogueController_Police>();
-            Transform sphere = dg.IntObj.transform.Find("Sphere");
-            CapsuleCollider cc = sphere.GetComponent<CapsuleCollider>();
-            cc.height = 1.85f;
-            cc.radius = 0.5f;
 
             offc.Awareness.SetAwarenessActive(false);
 
@@ -223,6 +231,8 @@ namespace NACops
             }
 
             npc.Awareness.SetAwarenessActive(false);
+
+            yield break;
         }
         
         // Extend the base amount of officers available for daily routines
@@ -250,9 +260,31 @@ namespace NACops
                 myNpc.NPCData.Inventory.CanBePickpocketed = true;
                 myNpc.NPCData.WeatherBehaviour.UseUmbrellaChance = 0f;
                 myNpc.Actions._canUseUmbrella = false;
+                myNpc.HasUmbrella = false;
 
                 if (!NPCManager.NPCRegistry.Contains(myNpc))
                     NPCManager.NPCRegistry.Add(myNpc);
+
+                Log($"Removing unassigned avatar objects countpre: {offc.Avatar.Appearance._avatarObjectsContainer.transform.childCount}");
+                Transform target = offc.Avatar.Appearance._avatarObjectsContainer.transform;
+                List<AvatarObject> destroyable = new();
+                for (int j = offc.Avatar.Appearance._avatarObjectsContainer.transform.childCount - 1; j >= 0; j--)
+                {
+                    Transform avatarObjectTr = target.GetChild(j);
+                    if (avatarObjectTr)
+                    {
+                        AvatarObject comp = avatarObjectTr.gameObject.GetComponent<AvatarObject>();
+
+                        if (comp != null && !offc.Avatar.Appearance._appliedObjects.Contains(comp))
+                            destroyable.Add(comp);
+                    }
+                }
+                int destroyableCount = destroyable.Count;
+                foreach (AvatarObject avObj in destroyable)
+                {
+                    UnityEngine.Object.Destroy(avObj.gameObject);
+                }
+                Log($"Removed unassigned avatar objects count: {destroyableCount}");
 
                 networkManager.ServerManager.Spawn(copNet);
                 copNet.gameObject.SetActive(true);
@@ -262,10 +294,53 @@ namespace NACops
 
                 copNet.transform.Find("Avatar").gameObject.SetActive(true);
 
-                AvatarSettings createdSettings = null;
-                SetRandomAvatar(offc, ref createdSettings);
+                SetRandomOfficerAvatar(offc);
                 SetVOEmitter(offc);
-                yield return GenerateImpostor(offc, createdSettings);
+
+                // Retains AvatarAttachment and SkinnedAvatarAttachment type objects within Avatar transform hierarchy
+                // for the cloned objects, probably unassigned worn/naked objects after cloned so must remove those?
+                AvatarAttachment[] avatarAttachments = offc.Avatar.GetComponentsInChildren<AvatarAttachment>(true);
+                SkinnedAvatarAttachment[] skinnedAvatarAttachments = offc.Avatar.GetComponentsInChildren<SkinnedAvatarAttachment>(true);
+
+                Log("Removing unassigned instantiated avatar objects");
+                if (avatarAttachments != null && avatarAttachments.Length > 0)
+                {
+                    Log($"Found {avatarAttachments.Length} avatar attachment type objects");
+                    foreach (AvatarAttachment obj in avatarAttachments)
+                    {
+                        if (obj.Parent == null)
+                            UnityEngine.Object.Destroy(obj.gameObject);
+                    }
+                }
+                if (skinnedAvatarAttachments != null && skinnedAvatarAttachments.Length > 0)
+                {
+                    Log($"Found {skinnedAvatarAttachments.Length} skinned avatar attachment type objects");
+                    foreach (SkinnedAvatarAttachment obj in skinnedAvatarAttachments)
+                    {
+                        if (obj.Parent == null)
+                            UnityEngine.Object.Destroy(obj.gameObject);
+                    }
+                }
+
+                yield return GenerateImpostor(offc);
+
+                offc.transform.parent = copNPCParent;
+                offc._defaultParent = copNPCParent;
+
+                // Validate because after impostor create
+                // the cloned objects refresh the avatar and have it unassigned...
+                if (offc.PoliceBelt == null)
+                {
+                    // fetch the correct one from worn objects
+                    foreach (AvatarObject obj in offc.Avatar.Appearance._wornObjects)
+                    {
+                        if (obj.Id == "policebelt")
+                        {
+                            offc.PoliceBelt = obj.GetComponent<PoliceBelt>();
+                            break;
+                        }
+                    }
+                }
 
                 copNet.GetComponent<NavMeshAgent>().enabled = true;
                 offc.AutoDeactivate = true;
@@ -273,7 +348,6 @@ namespace NACops
                 offc.Movement.Warp(station.SpawnPoint);
                 station.NPCEnteredBuilding(offc, station.Doors[0]);
                 generatedOfficerPool.Add(offc);
-
             }
             Log("Extended cops array");
             yield break;
@@ -299,6 +373,7 @@ namespace NACops
             myNpc.NPCData.Inventory.CanBePickpocketed = false;
             myNpc.NPCData.WeatherBehaviour.UseUmbrellaChance = 0f;
             myNpc.Actions._canUseUmbrella = false;
+            myNpc.HasUmbrella = false;
 
             //myNpc.transform.parent = NPCManager.Instance.NPCContainer;
 
@@ -322,6 +397,9 @@ namespace NACops
 
             offc.Awareness.SetAwarenessActive(false);
 
+            offc.transform.parent = copNPCParent;
+            offc._defaultParent = copNPCParent;
+
             Log("Done spawning Investigator");
             yield break;
         }
@@ -344,11 +422,34 @@ namespace NACops
             myNpc.NPCData.Inventory.CanBePickpocketed = false;
             myNpc.NPCData.WeatherBehaviour.UseUmbrellaChance = 0f;
             myNpc.Actions._canUseUmbrella = false;
+            myNpc.HasUmbrella = false;
 
             //myNpc.transform.parent = NPCManager.Instance.NPCContainer;
 
             if (!NPCManager.NPCRegistry.Contains(myNpc))
                 NPCManager.NPCRegistry.Add(myNpc);
+
+            Log($"Removing unassigned avatar objects countpre: {offc.Avatar.Appearance._avatarObjectsContainer.transform.childCount}");
+            Transform target = offc.Avatar.Appearance._avatarObjectsContainer.transform;
+            List<AvatarObject> destroyable = new();
+            for (int j = offc.Avatar.Appearance._avatarObjectsContainer.transform.childCount - 1; j >= 0; j--)
+            {
+                Transform avatarObjectTr = target.GetChild(j);
+                if (avatarObjectTr)
+                {
+                    AvatarObject comp = avatarObjectTr.gameObject.GetComponent<AvatarObject>();
+
+                    if (comp != null && !offc.Avatar.Appearance._appliedObjects.Contains(comp))
+                        destroyable.Add(comp);
+                }
+            }
+            int destroyableCount = destroyable.Count;
+            foreach (AvatarObject avObj in destroyable)
+            {
+                UnityEngine.Object.Destroy(avObj.gameObject);
+            }
+            Log($"Removed unassigned avatar objects count: {destroyableCount}");
+
 
             networkManager.ServerManager.Spawn(copNet);
 
@@ -359,10 +460,50 @@ namespace NACops
             copNet.gameObject.SetActive(true);
             copNet.transform.Find("Avatar").gameObject.SetActive(true);
 
-            AvatarSettings createdSettings = null;
-            SetRandomAvatar(offc, ref createdSettings);
+            SetRandomOfficerAvatar(offc);
             SetVOEmitter(offc);
-            yield return GenerateImpostor(offc, createdSettings);
+
+            // Retains AvatarAttachment and SkinnedAvatarAttachment type objects within Avatar transform hierarchy
+            // for the cloned objects, probably unassigned worn/naked objects after cloned so must remove those?
+            AvatarAttachment[] avatarAttachments = offc.Avatar.GetComponentsInChildren<AvatarAttachment>(true);
+            SkinnedAvatarAttachment[] skinnedAvatarAttachments = offc.Avatar.GetComponentsInChildren<SkinnedAvatarAttachment>(true);
+
+            Log("Removing unassigned instantiated avatar objects");
+            if (avatarAttachments != null && avatarAttachments.Length > 0)
+            {
+                Log($"Found {avatarAttachments.Length} avatar attachment type objects");
+                foreach (AvatarAttachment obj in avatarAttachments)
+                {
+                    if (obj.Parent == null)
+                        UnityEngine.Object.Destroy(obj.gameObject);
+                }
+            }
+            if (skinnedAvatarAttachments != null && skinnedAvatarAttachments.Length > 0)
+            {
+                Log($"Found {skinnedAvatarAttachments.Length} skinned avatar attachment type objects");
+                foreach (SkinnedAvatarAttachment obj in skinnedAvatarAttachments)
+                {
+                    if (obj.Parent == null)
+                        UnityEngine.Object.Destroy(obj.gameObject);
+                }
+            }
+
+            yield return GenerateImpostor(offc);
+
+            // Validate because after impostor create
+            // the cloned objects refresh the avatar and have it unassigned...
+            if (offc.PoliceBelt == null)
+            {
+                // fetch the correct one from worn objects
+                foreach (AvatarObject obj in offc.Avatar.Appearance._wornObjects)
+                {
+                    if (obj.Id == "policebelt")
+                    {
+                        offc.PoliceBelt = obj.GetComponent<PoliceBelt>();
+                        break;
+                    }
+                }
+            }
 
             copNet.gameObject.SetActive(false);
             copNet.transform.Find("Avatar").gameObject.SetActive(false);
@@ -374,6 +515,9 @@ namespace NACops
                 PoliceOfficer.Officers.Remove(offc);
 
             offc.Awareness.SetAwarenessActive(false);
+
+            offc.transform.parent = copNPCParent;
+            offc._defaultParent = copNPCParent;
 
             Log("Done spawning buy bust officer");
             yield break;

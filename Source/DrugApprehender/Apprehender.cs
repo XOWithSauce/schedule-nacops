@@ -79,7 +79,7 @@ namespace NACops
                     if (GUIDInUse.Contains(offc.BakedGUID) || currentDrugApprehender.Contains(offc)) continue;
                     if (Vector3.Distance(offc.transform.position, player.transform.position) > 50f) continue;
                     if (offc.Health.IsDead || offc.Health.IsKnockedOut) continue;
-                    if (offc.Awareness.VisionCone.IsPlayerVisible(player) && offc.Movement.CanMove() && !offc.IsInVehicle && !offc.isInBuilding)
+                    if (offc.Awareness.VisionCone.IsPlayerVisible(player) && offc.Movement.CanMove && !offc.IsInVehicle && !offc.isInBuilding)
                     {
                         offc.BeginFootPursuit(player.PlayerCode);
                         coros.Add(MelonCoroutines.Start(GiveFalseCharges(severity: 3, player)));

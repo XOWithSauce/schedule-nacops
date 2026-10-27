@@ -76,7 +76,7 @@ namespace NACops
                 foreach (Player player in Player.PlayerList)
                 {
                     player.CrimeData.CheckNearestOfficer();
-                    PoliceOfficer officer = player.CrimeData.NearestOfficer;
+                    PoliceOfficer officer = player.CrimeData.NearestActivePoliceOfficer;
                     if (officer == null) continue;
                     if (!CanProceed(officer, player, minDistance, ignoreVehicle:true)) continue;
 
@@ -117,7 +117,7 @@ namespace NACops
             }
 
             officer.Movement.GetClosestReachablePoint(player.CenterPointTransform.position, out Vector3 pos);
-            if (pos != Vector3.zero && officer.Movement.CanMove() && officer.Movement.CanGetTo(pos))
+            if (pos != Vector3.zero && officer.Movement.CanMove && officer.Movement.CanGetTo(pos))
                 officer.Movement.SetDestination(pos);
 
             if (GUIDInUse.Contains(officer.BakedGUID))

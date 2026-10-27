@@ -8,6 +8,7 @@ using static NACops.NACops;
 using static NACops.DebugModule;
 
 #if MONO
+using ScheduleOne.Core.Avatar;
 using ScheduleOne.AvatarFramework.Equipping;
 using ScheduleOne.NPCs.Behaviour;
 using ScheduleOne.Police;
@@ -15,6 +16,7 @@ using ScheduleOne.Vision;
 using ScheduleOne.DevUtilities;
 using ScheduleOne.Vehicles;
 #else
+using Il2CppScheduleOne.Core.Avatar;
 using Il2CppScheduleOne.AvatarFramework.Equipping;
 using Il2CppScheduleOne.NPCs.Behaviour;
 using Il2CppScheduleOne.Police;
@@ -80,7 +82,7 @@ namespace NACops
 
             // Otherwise identical except for the set weapon function
             float num = Vector3.Distance(__instance.transform.position, __instance.TargetPlayer.Avatar.CenterPoint);
-            __instance.SetMovementSpeed(Mathf.Lerp(0.7f, 0.9f, Mathf.Clamp01(num / 6f)), "combat", 5);
+            __instance.SetMovementSpeed(Mathf.Lerp(0.7f, 0.9f, Mathf.Clamp01(num / 6f)));
 
             // Setweapon function needs to be different so that it instantiates from that gunprefab
             // instead of loading from resources because otherwise it wont have the custom stats
@@ -153,11 +155,11 @@ namespace NACops
             foreach (PoliceOfficer officer in allActiveOfficers)
             {
                 yield return Wait01;
-
+                Log($"Set officer: {officer.gameObject.name}");
                 officer.Awareness.VisionCone.WorldspaceIconsEnabled = officerConfig.ShowNoticeIcons;
 
                 if (officerConfig.CanEnterBuildings)
-                    officer.Movement.Agent.areaMask = 57; // identical to employee
+                    officer.Movement._agent.areaMask = 57; // identical to employee
 
                 if (officerConfig.OverrideBodySearch)
                 {
@@ -166,7 +168,7 @@ namespace NACops
                 }
 
                 if (officerConfig.OverrideMovement)
-                    officer.Movement.MoveSpeedMultiplier = officerConfig.MovementSpeedMultiplier;
+                    officer.Movement.SpeedController._speedMultiplier = officerConfig.MovementSpeedMultiplier;
 
                 if (officerConfig.OverrideCombatBeh)
                 {
@@ -179,7 +181,7 @@ namespace NACops
                 if (officerConfig.OverrideMaxHealth)
                 {
                     officer.NPCData.Health.MaxHealth = officerConfig.OfficerMaxHealth;
-                    officer.Health.Health = officerConfig.OfficerMaxHealth;
+                    officer.Health.RestoreHealth();
                 }
 
                 if (officerConfig.OverrideWeapon && !hasOverridenWeaponPrefab)
@@ -227,14 +229,28 @@ namespace NACops
                         }
                         else
                         {
-                            rangedWeaponPrefab = UnityEngine.Object.Instantiate<GameObject>(gameObject, new Vector3(0f, -5f, 0f), Quaternion.identity, null).GetComponent<AvatarEquippable>();
-                            if (!rangedWeaponPrefab.gameObject.activeSelf)
-                                rangedWeaponPrefab.gameObject.SetActive(true);
+                            GameObject wepObj = UnityEngine.Object.Instantiate<GameObject>(gameObject, new Vector3(0f, -5f, 0f), Quaternion.identity, null);
+
+                            if (wepObj.TryGetComponent<AvatarEquippable>(out AvatarEquippable equippableComp))
+                            {
+                                Log("Found equippable component");
+                                rangedWeaponPrefab = equippableComp;
+                                Log("Instantiated");
+                                if (!rangedWeaponPrefab.gameObject.activeSelf)
+                                    rangedWeaponPrefab.gameObject.SetActive(true);
+                            }
+                            else
+                            {
+                                Log("Failed to find equippable component");
+                            }
+
+                            Log("Done creating loaded ranged weapon");
                         }
                         hasInstantiatedRangedWeapon = true;
                     }
 
                     // Override stats
+                    Log("Override stats");
                     AvatarRangedWeapon rangedWeapon = null;
 
                     if (hasInstantiatedRangedWeapon && rangedWeaponPrefab != null)
@@ -264,6 +280,7 @@ namespace NACops
                 if (hasInstantiatedRangedWeapon && rangedWeaponPrefab != null)
                 {
                     // override the field
+                    Log("Override holster");
                     officer.GunPrefab = rangedWeaponPrefab;
 
                     // Fix belt so that it shows the custom weapon
@@ -277,22 +294,22 @@ namespace NACops
                     {
                         case "goldenm1911":
                             modelTransformName = "M1911";
-                            selectedScale = new(0.008f, 0.008f, 0.008f);
-                            customPos = new(0.0016f, -0.0001f, -0.0007f);
+                            selectedScale = new(0.9f, 0.9f, 0.9f);
+                            customPos = new(0.17f, 0f, -0.07f);
                             customRot = new(290f, 330f, 220f);
                             break;
 
                         case "revolver":
                             modelTransformName = "Revolver_";
-                            selectedScale = new(0.008f, 0.008f, 0.008f);
-                            customPos = new(0.0016f, -0.0001f, -0.0008f);
+                            selectedScale = new(0.9f, 0.9f, 0.9f);
+                            customPos = new(0.17f, 0f, -0.07f);
                             customRot = new(90f, 10f, 0f);
                             break;
 
                         case "shotgun":
                             modelTransformName = "Shotgun";
-                            selectedScale = new(0.008f, 0.008f, 0.008f);
-                            customPos = new(0.0016f, -0.0005f, -0.0005f);
+                            selectedScale = new(0.8f, 0.8f, 0.8f);
+                            customPos = new(0.17f, 0f, -0.07f);
                             customRot = new(80f, 150f, 150f);
                             break;
                     }
@@ -302,13 +319,51 @@ namespace NACops
                         Log($"Failed to instantiate belt gun model! Missing prefab gun model transform object at {rangedWeaponPrefab.transform.GetScenePath()} / {modelTransformName}");
                     }
                     GameObject model = UnityEngine.Object.Instantiate(modelTr.gameObject);
-                    model.transform.parent = officer.belt.transform.GetChild(0);
-                    model.transform.localScale = selectedScale;
-                    model.transform.SetLocalPositionAndRotation(customPos, Quaternion.Euler(customRot));
-                    officer.belt.GunObject.SetActive(false);
-                    officer.belt.GunObject = model;
-                    if (!model.gameObject.activeSelf)
-                        model.gameObject.SetActive(true);
+
+                    Transform gunTrParent = null;
+                    if (officer.PoliceBelt == null)
+                    {
+                        Log("Police belt is null cant proceed");
+                    }
+                    else
+                    {
+                        Log("Belt assigned, check transform");
+                        AvatarObject target = officer.PoliceBelt.GetComponent<AvatarObject>();
+                        if (target == null)
+                        {
+                            Log("Failed to find valid AvatarObject from police belt");
+                        }
+                        else
+                        {
+                            if (target._attachments.Length > 0)
+                            {
+                                Transform trParent = target._attachments[0].transform.GetChild(0);
+                                if (trParent != null)
+                                {
+                                    Log($"Attachment parent found at: {trParent.name} !");
+                                    gunTrParent = trParent;
+                                }
+                                else
+                                {
+                                    Log("Avatar object attachment has no child objects");
+                                }
+                            }
+                            else
+                            {
+                                Log("Avatar object has 0 attachments expected 1 or more");
+                            }
+                        }
+
+                        model.transform.parent = gunTrParent;
+                        model.transform.localScale = selectedScale;
+                        model.transform.SetLocalPositionAndRotation(customPos, Quaternion.Euler(customRot));
+                        Log("Set model transform and position");
+                        officer.PoliceBelt.GunObject.SetActive(false);
+                        officer.PoliceBelt.GunObject = model;
+                        if (!model.gameObject.activeSelf)
+                            model.gameObject.SetActive(true);
+                        Log("Created model");
+                    }
                 }
 
                 if (officerConfig.OverrideTaser && !hasOverridenTaserPrefab)
@@ -339,6 +394,7 @@ namespace NACops
 
                 if (officerConfig.OverrideVision)
                 {
+                    Log("Overriding vision");
                     // apply the range
                     officer.Awareness.VisionCone.RangeMultiplier = officerConfig.VisionRangeMultiplier;
 
@@ -379,8 +435,6 @@ namespace NACops
 
                     Log("  Overridden Vision");
                 }
-
-
             }
             Log("Officer properties complete");
             yield break;

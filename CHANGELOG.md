@@ -1,3 +1,15 @@
+# Version 2.1.4
+- Fixed mod to work in the latest 0.4.7f12 update with following changes
+- Added Console commands for private investigator visualize method that allow for testing the investigator custom events (making a phone call and taking photos)
+- Added a new camera to the mass surveillance feature from inside the Hyland Medical building 
+- Added a few more clothes options to the Private Investigator clothing randomization system
+- Changed Private Investigator to build up Property Heat a little bit easier
+- Changed Raid Cops to use clothing randomization for their shirt
+- Fixed a bug with a mass surveillance camera transform path in the Hyland Medical building
+- Fixed all the avatar object ids that mod uses for avatars clothing and appearance
+- Fixed bugs with the avatar and clothing logic in alot of the mod cloned police objects
+- Fixed the il2cpp version of the mod having "Cartel Enforcer" as the assembly product name instead of "NACops", leftover typo from a copypaste long ago
+
 # Version 2.1.3
 - Ensured that current mod version works in latest 0.4.6f13 update
 - Fixed [Issues #8](https://github.com/XOWithSauce/schedule-nacops/issues/8) where at Vector3.Zero invisible cop would have its awareness enabled unintendedly

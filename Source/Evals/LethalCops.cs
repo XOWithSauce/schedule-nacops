@@ -73,7 +73,7 @@ namespace NACops
                 foreach (Player player in Player.PlayerList)
                 {
                     player.CrimeData.CheckNearestOfficer();
-                    PoliceOfficer officer = player.CrimeData.NearestOfficer;
+                    PoliceOfficer officer = player.CrimeData.NearestActivePoliceOfficer;
                     if (officer == null) continue;
 
                     if (!CanProceed(officer, player, minDistance)) continue;

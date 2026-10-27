@@ -33,7 +33,6 @@ using Il2CppInterop.Runtime.InteropTypes.Arrays;
 
 namespace NACops
 {
-
     public static class SurveillanceCameraPaths
     {
         public static readonly List<string> unidirectional = new()
@@ -46,7 +45,8 @@ namespace NACops
             "Map/Hyland Point/Region_Northtown/Pawn shop/Security Camera (Barrel)",
             "Map/Hyland Point/Region_Downtown/Casino/casino/Security Camera (Barrel)",
             "Map/Hyland Point/Region_Downtown/RE Office/Security Camera (Barrel)",
-            "Map/Hyland Point/Region_Uptown/Medical Practice/Security Camera (Barrel)",
+            "@Businesses/Hyland Medical/Medical Practice Update/Security Camera (Barrel)",
+            "@Businesses/Hyland Medical/Interior/Security Camera (Barrel)",
             "Map/Hyland Point/Region_Northtown/Hardware Store/Small hardware store/Security Camera (Barrel)",
             "Map/Hyland Point/Region_Downtown/HardwardStore/Security Camera (Barrel)",
             "Map/Hyland Point/Region_Westville/Slums Gas Station/Security Camera (Barrel)",
@@ -93,8 +93,6 @@ namespace NACops
     }
     public static class MassSurveillance
     {
-        private static bool _surveilSeenStatesEvaluating= false;
-        private static bool _surveilCrimeStatusEvaluating = false;
         private static bool _hasDispatchedNearby = false;
 
         public static Material lineRendererMaterial;
@@ -197,9 +195,9 @@ namespace NACops
             }
 
 #if MONO
-            NetworkSingleton<TimeManager>.Instance.onSleepEnd += RotateCameraActivity;
+            NetworkSingleton<SleepController>.Instance.OnSleepEnd += RotateCameraActivity;
 #else
-            NetworkSingleton<TimeManager>.Instance.onSleepEnd += (Il2CppSystem.Action)RotateCameraActivity;
+            NetworkSingleton<SleepController>.Instance.OnSleepEnd += (Il2CppSystem.Action)RotateCameraActivity;
 #endif
 
 #if MONO
@@ -225,8 +223,6 @@ namespace NACops
 
         public static void ResetMassSurveillance()
         {
-            _surveilSeenStatesEvaluating = false;
-            _surveilCrimeStatusEvaluating = false;
             _hasDispatchedNearby = false;
             lineRendererMaterial = null;
             fxSparksTemplate = null;
@@ -311,27 +307,17 @@ namespace NACops
         // When any instance finds player submit its cache for evaluation when not on cooldown
         public static void OnCameraFullyNoticed(List<string> seenStateCache, float cacheEvidenceRatio = -1f)
         {
-            string seenCacheStr = "";
-            seenStateCache.ForEach(x => seenCacheStr += x + " ");
-            Log($"Running camera notice events for: {seenCacheStr}");
-            Log($"SeenStates evaluating: {_surveilSeenStatesEvaluating}");
-            Log($"Crime status evaluating: {_surveilCrimeStatusEvaluating}");
+            if (surveillanceConfig.SurveilBaseCrimes)
+                SurveilSeenStates(seenStateCache, cacheEvidenceRatio);
 
-            if (surveillanceConfig.SurveilBaseCrimes && !_surveilSeenStatesEvaluating)
-                coros.Add(MelonCoroutines.Start(SurveilSeenStates(seenStateCache, cacheEvidenceRatio)));
-
-            if (surveillanceConfig.SurveilCrimeStatus && !_surveilCrimeStatusEvaluating)
-                coros.Add(MelonCoroutines.Start(SurveilCrimeStatus()));
+            if (surveillanceConfig.SurveilCrimeStatus)
+                SurveilCrimeStatus();
 
             return;
         }
-        public static IEnumerator SurveilSeenStates(List<string> seenStateCache, float cacheEvidenceRatio = -1f)
+        public static void SurveilSeenStates(List<string> seenStateCache, float cacheEvidenceRatio = -1f)
         {
-            _surveilSeenStatesEvaluating = true;
-            Log("Evaluate seen states start");
-            // So during curfew if the camera notices player what happens?
-            // Maybe check nearby officers or dispatch?
-            float mult = 1f + Mathf.Clamp01(cacheEvidenceRatio);
+            float mult = cacheEvidenceRatio > 0f ? 1f + Mathf.Clamp01(cacheEvidenceRatio) : 1f;
             float accumulatedSeverity = 0f;
             foreach (string stateLabel in seenStateCache)
             {
@@ -387,8 +373,8 @@ namespace NACops
                     default:
                         break;
                 }
-                accumulatedSeverity = Mathf.Clamp01(accumulatedSeverity * mult);
             }
+            accumulatedSeverity = Mathf.Clamp01(accumulatedSeverity * mult);
 
             Log($"Accumulated severity: {accumulatedSeverity} (x{mult})");
             if (UnityEngine.Random.Range(0f, 0.85f) <= accumulatedSeverity)
@@ -399,13 +385,10 @@ namespace NACops
             }
 
             Log("Finished surveil seen states evaluation");
-            _surveilSeenStatesEvaluating = false;
-            yield break;
+            return;
         }
-        public static IEnumerator SurveilCrimeStatus()
+        public static void SurveilCrimeStatus()
         {
-            _surveilCrimeStatusEvaluating = true; 
-
             if (Player.Local.CrimeData.CurrentPursuitLevel != PlayerCrimeData.EPursuitLevel.None)
             {
                 Log("Record last known position and Reset duration");
@@ -413,8 +396,7 @@ namespace NACops
                 Player.Local.CrimeData.CurrentPursuitLevelDuration = 0f;
                 Player.Local.CrimeData.TimeSincePursuitStart = 0f;
             }
-            _surveilCrimeStatusEvaluating = false;
-            yield break;
+            return;
         }
 
         // When not on cooldown try to find officers to dispatch prioritizing nearby positions

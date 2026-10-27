@@ -39,7 +39,7 @@ namespace NACops
         {
             // IF the officer is a private investigator
             if (!currentConfig.PrivateInvestigator) return true;
-            if (__instance.officer.belt == null)
+            if (__instance.officer.PoliceBelt == null)
             {
                 return false;
             }

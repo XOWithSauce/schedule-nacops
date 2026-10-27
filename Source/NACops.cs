@@ -65,7 +65,7 @@ namespace NACops
         public const string Description = "Crazyyyy cops";
         public const string Author = "XOWithSauce";
         public const string Company = null;
-        public const string Version = "2.1.3";
+        public const string Version = "2.1.4";
         public const string DownloadLink = null;
     }
 
@@ -265,9 +265,9 @@ namespace NACops
         {
             if (!currentConfig.RaidsEnabled) yield break;
 #if MONO
-            NetworkSingleton<TimeManager>.Instance.onSleepEnd += OnDayPassEvaluateRaid;
+            NetworkSingleton<SleepController>.Instance.OnSleepEnd += OnDayPassEvaluateRaid;
 #else
-            NetworkSingleton<TimeManager>.Instance.onSleepEnd += (Il2CppSystem.Action)OnDayPassEvaluateRaid;
+            NetworkSingleton<SleepController>.Instance.OnSleepEnd += (Il2CppSystem.Action)OnDayPassEvaluateRaid;
 #endif
         }
         public static IEnumerator StationInit()

@@ -6,10 +6,12 @@ using static NACops.NACops;
 using static NACops.DebugModule;
 
 #if MONO
+using ScheduleOne.Core.Avatar;
 using ScheduleOne.Map;
 using ScheduleOne.PlayerScripts;
 using ScheduleOne.Police;
 #else
+using Il2CppScheduleOne.Core.Avatar;
 using Il2CppScheduleOne.Map;
 using Il2CppScheduleOne.PlayerScripts;
 using Il2CppScheduleOne.Police;
@@ -28,7 +30,7 @@ namespace NACops
             Log("Racist officers enabled");
             List<Player> blackPlayers = new();
             foreach (Player player in Player.PlayerList)
-                if (!player.Avatar.IsWhite())
+                if (player.Avatar.Appearance.PrimarySkinTone == ESkinTone.Dark)
                     blackPlayers.Add(player);
             
             if (blackPlayers.Count == 0)
